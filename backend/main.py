@@ -852,9 +852,9 @@ def daily_report(date: str = None):
         (date,)
     ).fetchall()
     
-    # Money from orders for the day, grouped by shop
+    # Money from orders for the day, broken down by product and shop
     orders = conn.execute(
-        "SELECT total, shop FROM orders WHERE date(created_at) = ?",
+        "SELECT total, shop, items FROM orders WHERE date(created_at) = ?",
         (date,)
     ).fetchall()
     # Total remaining minutes per shop (from customers registered at each shop)
@@ -868,8 +868,16 @@ def daily_report(date: str = None):
     
     conn.close()
     
-    shops = {"Wyken": {"sessions": [], "minutes": 0, "money": 0, "minutes_left": minutes_left.get("Wyken", 0)},
-             "Earlsdon": {"sessions": [], "minutes": 0, "money": 0, "minutes_left": minutes_left.get("Earlsdon", 0)}}
+    products_list = [
+        "3 MIN", "6 MIN", "9 MIN", "12 MIN", "15 MIN",
+        "30 MIN Pack", "60 MIN Pack", "100 MIN Pack", "120 MIN Pack",
+        "Unlimited Weekly", "Unlimited Monthly"
+    ]
+    
+    shops = {
+        "Wyken": {"sessions": [], "minutes": 0, "money": 0, "minutes_left": minutes_left.get("Wyken", 0), "breakdown": {p: 0 for p in products_list}},
+        "Earlsdon": {"sessions": [], "minutes": 0, "money": 0, "minutes_left": minutes_left.get("Earlsdon", 0), "breakdown": {p: 0 for p in products_list}}
+    }
     total_minutes = 0
     total_money = 0
     
@@ -879,6 +887,12 @@ def daily_report(date: str = None):
         shop = o["shop"] if o["shop"] in shops else None
         if shop:
             shops[shop]["money"] += amt
+            # Find which product was sold from the items string
+            items = (o["items"] or "").lower()
+            for p in products_list:
+                if p.lower() in items:
+                    shops[shop]["breakdown"][p] += amt
+                    break
     
     for s in sessions:
         shop = s["shop"] if s["shop"] in shops else "Wyken"

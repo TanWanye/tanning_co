@@ -977,8 +977,14 @@ async function loadReport() {
     html += `<div class="room-card" style="margin:12px 0">
       <strong>📍 ${shop}</strong><br>
       Sessions: ${info.sessions.length} • Minutes used today: ${info.minutes}<br>
-      Money taken: £${(info.money || 0).toFixed(2)}<br>
       Total minutes left (customers at this shop): ${info.minutes_left || 0}<br>
+      <strong style="margin-top:8px;display:block">Money taken:</strong>
+      <div style="font-size:0.85rem;margin:6px 0">
+        ${Object.entries(info.breakdown || {}).map(([prod, amt]) => 
+          amt > 0 ? `<div>${prod}: £${amt.toFixed(2)}</div>` : ''
+        ).join('')}
+      </div>
+      <strong>Shop total: £${(info.money || 0).toFixed(2)}</strong><br>
       <div style="max-height:150px;overflow-y:auto;margin-top:8px;font-size:0.85rem">
         ${info.sessions.map(s => `${s.customer_name || 'Unknown'} — ${s.minutes} min (${s.room_name})`).join('<br>') || 'No sessions'}
       </div>
