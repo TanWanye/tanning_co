@@ -1,184 +1,148 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#1a120c">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#fff7ef">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <title>The Tanning Co. Coventry</title>
-<style>
-:root {
-  --bg: #0f0c0a;
-  --card: #1a1512;
-  --accent: #f4a261;
-  --gold: #ffd166;
-  --text: #f5f5f5;
-  --muted: #b8a99a;
-}
-* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  padding: 20px 16px 40px;
-}
-.header {
-  text-align: center;
-  margin-bottom: 28px;
-}
-.header h1 { color: var(--gold); font-size: 1.6rem; }
-.header p { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
-.card {
-  background: var(--card);
-  border-radius: 16px;
-  padding: 20px;
-  margin-bottom: 16px;
-  border: 1px solid #3d2b20;
-}
-.minutes-big {
-  font-size: 3.5rem;
-  font-weight: 700;
-  color: var(--gold);
-  text-align: center;
-  line-height: 1;
-}
-.minutes-label { text-align: center; color: var(--muted); margin-top: 4px; }
-.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
-.stat { text-align: center; }
-.stat strong { display: block; font-size: 1.4rem; color: var(--accent); }
-.stat span { font-size: 0.8rem; color: var(--muted); }
-input {
-  width: 100%;
-  padding: 14px;
-  margin: 8px 0;
-  border-radius: 12px;
-  border: 1px solid #3d2b20;
-  background: #0f0c0a;
-  color: white;
-  font-size: 16px;
-}
-.btn {
-  width: 100%;
-  background: var(--accent);
-  color: white;
-  border: none;
-  padding: 14px;
-  border-radius: 12px;
-  font-size: 1rem;
-  font-weight: 600;
-  margin-top: 8px;
-}
-.btn:active { opacity: 0.9; }
-.locations { font-size: 0.85rem; color: var(--muted); line-height: 1.6; }
-.history-item { padding: 10px 0; border-bottom: 1px solid #3d2b20; font-size: 0.9rem; }
-.hidden { display: none; }
-.logout { background: transparent; color: var(--muted); border: 1px solid #3d2b20; }
-</style>
+<link rel="stylesheet" href="/static/css/customer.css">
 </head>
 <body>
-<div class="header">
-  <h1>☀️ The Tanning Co.</h1>
-  <p>Coventry • Check your minutes</p>
-</div>
+<main class="wrap">
+  <div class="brand"><span class="sun"></span>The Tanning Co.<small>Coventry</small></div>
 
-<!-- Login -->
-<div id="loginScreen">
-  <div class="card">
-    <h2 style="margin-bottom:12px">Customer Login</h2>
-    <input id="phone" type="tel" placeholder="Your phone number" inputmode="numeric">
-    <input id="pin" type="password" placeholder="PIN (default 1234)" value="1234">
-    <button class="btn" onclick="login()">View My Account</button>
+  <div class="tabs" id="tabs" role="tablist">
+    <button class="active" data-tab="signup" role="tab">Sign up</button>
+    <button data-tab="login" role="tab">Check my minutes</button>
   </div>
-  <div class="card locations">
-    <strong>Our Sites</strong><br>
-    📍 Wyken: 50 Torcross Ave • 024 7665 9966<br>
-    📍 Earlsdon: 116 Albany Rd • 024 7667 4922
-  </div>
-</div>
 
-<!-- Account -->
-<div id="accountScreen" class="hidden">
-  <div class="card">
-    <div style="text-align:center;margin-bottom:8px" id="customerName"></div>
-    <div class="minutes-big" id="minutes">0</div>
-    <div class="minutes-label">minutes remaining</div>
-    <div class="stats">
-      <div class="stat"><strong id="visits">0</strong><span>Visits</span></div>
-      <div class="stat"><strong id="loyalty">0</strong><span>Loyalty Points</span></div>
+  <!-- Sign up -->
+  <section id="signup" class="card">
+    <h1>Create your account</h1>
+    <p class="lead">Takes about two minutes. You'll need to show photo ID on your first visit.</p>
+
+    <form id="signupForm" novalidate>
+      <fieldset>
+        <legend>Your details</legend>
+        <label class="field"><span>Full name</span><input name="name" type="text" autocomplete="name" required maxlength="80"></label>
+        <label class="field"><span>Mobile number</span><input name="phone" type="tel" autocomplete="tel" inputmode="tel" required placeholder="07…"></label>
+        <label class="field"><span>Email <em>(optional)</em></span><input name="email" type="email" autocomplete="email"></label>
+        <div class="two">
+          <label class="field"><span>Postcode</span><input name="postcode" type="text" autocomplete="postal-code" required></label>
+          <label class="field"><span>Date of birth</span><input name="dob" type="date" autocomplete="bday" required></label>
+        </div>
+        <div class="field"><span>Your salon</span>
+          <div class="choice-row">
+            <label class="choice"><input type="radio" name="shop" value="Wyken" required><span><b>Wyken</b><small>50 Torcross Ave</small></span></label>
+            <label class="choice"><input type="radio" name="shop" value="Earlsdon"><span><b>Earlsdon</b><small>116 Albany Rd</small></span></label>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Your skin type</legend>
+        <p class="hint">Pick the one that sounds most like you in strong sun without protection.</p>
+        <div class="skin-list">
+          <label class="skin"><input type="radio" name="skin_type" value="1" required><i class="swatch s1"></i><span><b>Type 1</b><small>Always burns, never tans. Often red hair and freckles.</small></span></label>
+          <label class="skin"><input type="radio" name="skin_type" value="2"><i class="swatch s2"></i><span><b>Type 2</b><small>Burns easily, tans a little.</small></span></label>
+          <label class="skin"><input type="radio" name="skin_type" value="3"><i class="swatch s3"></i><span><b>Type 3</b><small>Sometimes burns, tans gradually.</small></span></label>
+          <label class="skin"><input type="radio" name="skin_type" value="4"><i class="swatch s4"></i><span><b>Type 4</b><small>Rarely burns, tans easily.</small></span></label>
+          <label class="skin"><input type="radio" name="skin_type" value="5"><i class="swatch s5"></i><span><b>Type 5</b><small>Very rarely burns, tans deeply.</small></span></label>
+          <label class="skin"><input type="radio" name="skin_type" value="6"><i class="swatch s6"></i><span><b>Type 6</b><small>Never burns.</small></span></label>
+        </div>
+        <div class="notice hidden" id="skin1Notice">Sunbeds aren't recommended for skin type 1 because it burns so easily. You can still sign up, but please talk to our staff before using a sunbed.</div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Health declaration</legend>
+        <label class="check"><input type="checkbox" name="declaration" required>
+          <span>I confirm that:
+            <ul>
+              <li>I'm 18 or over and will show photo ID on my first visit</li>
+              <li>I've never had skin cancer and I'm not pregnant</li>
+              <li>I'm not taking medication that makes my skin sensitive to light (if unsure, ask your pharmacist)</li>
+              <li>I'll tell staff if any of this changes</li>
+            </ul>
+          </span>
+        </label>
+        <label class="check"><input type="checkbox" name="terms" required>
+          <span>I understand sunbeds give out UV, which increases the risk of skin cancer. I'll wear the goggles provided, follow staff advice on session times and not tan more than once in 24 hours.</span>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Offers <em>(optional)</em></legend>
+        <label class="check"><input type="checkbox" name="marketing_email"><span>Email me offers and news</span></label>
+        <label class="check"><input type="checkbox" name="marketing_sms"><span>Text me offers and news</span></label>
+        <p class="hint">You can stop these at any time.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Choose a PIN</legend>
+        <p class="hint">4–6 digits. You'll use it with your mobile number to check your minutes.</p>
+        <div class="two">
+          <label class="field"><span>PIN</span><input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="new-password" required></label>
+          <label class="field"><span>PIN again</span><input name="pin2" type="password" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="new-password" required></label>
+        </div>
+      </fieldset>
+
+      <div class="hp" aria-hidden="true"><label>Leave this empty <input name="website" type="text" tabindex="-1" autocomplete="off"></label></div>
+
+      <p class="privacy">We use your details only to run your account and keep you safe on the sunbeds. We never sell or share them. Ask at the desk if you'd like a copy of your details or want them deleted.</p>
+      <div class="error" id="signupError" role="alert"></div>
+      <button class="btn" type="submit" id="signupBtn">Create my account</button>
+    </form>
+  </section>
+
+  <!-- Signed up -->
+  <section id="done" class="card hidden">
+    <div class="tick"></div>
+    <h1>You're signed up!</h1>
+    <p class="lead">Your customer number is <b id="doneNumber"></b>.</p>
+    <p>Please bring photo ID (driving licence or passport) on your first visit so we can confirm your age.</p>
+    <div class="notice hidden" id="doneSkin1">As you chose skin type 1, please speak to our staff before using a sunbed.</div>
+    <button class="btn btn-ghost" data-tab-go="login">Check my minutes</button>
+  </section>
+
+  <!-- Log in -->
+  <section id="login" class="card hidden">
+    <h1>Check my minutes</h1>
+    <form id="loginForm">
+      <label class="field"><span>Mobile number</span><input name="phone" type="tel" autocomplete="tel" inputmode="tel" required></label>
+      <label class="field"><span>PIN</span><input name="pin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" required></label>
+      <div class="error" id="loginError" role="alert"></div>
+      <button class="btn" type="submit" id="loginBtn">View my account</button>
+    </form>
+    <p class="hint center">No PIN yet, or forgotten it? Ask at the desk and we'll set one up.</p>
+  </section>
+
+  <!-- Account -->
+  <section id="account" class="hidden">
+    <div class="card account-card">
+      <div class="hello" id="accName"></div>
+      <div class="big" id="accMinutes">0</div>
+      <div class="big-label">minutes left</div>
+      <div class="pkg hidden" id="accPackage"></div>
+      <div class="stats">
+        <div><b id="accVisits">0</b><span>Visits</span></div>
+        <div><b id="accLoyalty">0</b><span>Loyalty points</span></div>
+        <div><b id="accNumber">–</b><span>Customer no.</span></div>
+      </div>
     </div>
-  </div>
-  <div class="card">
-    <h3 style="margin-bottom:8px">Recent Activity</h3>
-    <div id="history"></div>
-  </div>
-  <button class="btn logout" onclick="logout()">Log Out</button>
-</div>
-
-<script>
-let currentCustomer = null;
-
-async function login() {
-  const phone = document.getElementById('phone').value.trim();
-  const pin = document.getElementById('pin').value.trim() || '1234';
-  if (!phone) return alert('Enter your phone number');
-
-  const res = await fetch('/api/customer/login', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({phone, pin})
-  });
-
-  if (!res.ok) {
-    const err = await res.json();
-    return alert(err.detail || 'Login failed');
-  }
-
-  currentCustomer = await res.json();
-  showAccount();
-}
-
-function showAccount() {
-  document.getElementById('loginScreen').classList.add('hidden');
-  document.getElementById('accountScreen').classList.remove('hidden');
-  document.getElementById('customerName').textContent = currentCustomer.name;
-  document.getElementById('minutes').textContent = currentCustomer.remaining_minutes;
-  document.getElementById('visits').textContent = currentCustomer.visits;
-  document.getElementById('loyalty').textContent = currentCustomer.loyalty;
-  loadHistory();
-}
-
-async function loadHistory() {
-  const res = await fetch(`/api/customer/${currentCustomer.id}/history`);
-  const orders = await res.json();
-  const el = document.getElementById('history');
-  if (!orders.length) {
-    el.innerHTML = '<p style="color:var(--muted)">No recent activity</p>';
-    return;
-  }
-  el.innerHTML = orders.map(o => `
-    <div class="history-item">
-      <strong>${o.items || 'Session'}</strong><br>
-      <span style="color:var(--muted)">${new Date(o.created_at).toLocaleDateString()} • £${o.total.toFixed(2)}</span>
+    <div class="card">
+      <h2>Recent purchases</h2>
+      <div id="accHistory"></div>
     </div>
-  `).join('');
-}
+    <button class="btn btn-ghost" id="logoutBtn">Log out</button>
+  </section>
 
-function logout() {
-  currentCustomer = null;
-  document.getElementById('accountScreen').classList.add('hidden');
-  document.getElementById('loginScreen').classList.remove('hidden');
-  document.getElementById('phone').value = '';
-}
-
-// Auto-fill phone if saved
-const saved = localStorage.getItem('ttc_phone');
-if (saved) document.getElementById('phone').value = saved;
-
-document.getElementById('phone').addEventListener('change', e => {
-  localStorage.setItem('ttc_phone', e.target.value);
-});
-</script>
+  <footer class="sites">
+    <div><b>Wyken</b> · 50 Torcross Ave, CV2 3NQ · <a href="tel:02476659966">024 7665 9966</a></div>
+    <div><b>Earlsdon</b> · 116 Albany Rd, CV5 6NG · <a href="tel:02476674922">024 7667 4922</a></div>
+  </footer>
+</main>
+<script src="/static/js/customer.js"></script>
 </body>
 </html>

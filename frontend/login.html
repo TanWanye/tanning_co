@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<title>Staff sign in | The Tanning Co. Coventry</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<div class="auth-page">
+  <form class="auth-card" id="loginForm" autocomplete="on">
+    <div class="brand"><span class="sun"></span><div>The Tanning Co.<small>Coventry · Staff system</small></div></div>
+    <h1>Staff sign in</h1>
+    <p class="muted">For salon staff only. Customers can <a href="/customer">sign up or check minutes here</a>.</p>
+    <div id="setupNotice" class="alert warn hidden">
+      No staff accounts have been set up yet. Add <b>ADMIN_USERNAME</b> and <b>ADMIN_PASSWORD</b> in Render's
+      environment settings, then redeploy.
+    </div>
+    <label class="field"><span>Username</span>
+      <input type="text" id="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    </label>
+    <label class="field"><span>Password</span>
+      <input type="password" id="password" autocomplete="current-password" required>
+    </label>
+    <button class="btn btn-block" type="submit" id="loginBtn">Sign in</button>
+    <div class="error-text" id="loginError" role="alert"></div>
+    <div class="auth-foot">Ask your manager if you've forgotten your password.</div>
+  </form>
+</div>
+<script src="/static/js/login.js"></script>
+</body>
+</html>
