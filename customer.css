@@ -1,0 +1,100 @@
+/* The Tanning Co. Coventry - customer pages */
+:root {
+  --bg: #fff7ef;
+  --card: #ffffff;
+  --text: #2a1d14;
+  --muted: #7a6656;
+  --line: #f0e2d4;
+  --brand: #e9853a;
+  --brand-dark: #c96a22;
+  --brand-soft: #fdebd9;
+  --danger: #c2410c;
+  --ok: #15803d;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: radial-gradient(900px 420px at 50% -120px, #ffd9b0, transparent 70%), var(--bg);
+  color: var(--text); line-height: 1.5; min-height: 100vh;
+}
+.wrap { max-width: 560px; margin: 0 auto; padding: 24px 16px 40px; }
+.hidden { display: none !important; }
+.brand { display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 800; font-size: 1.35rem; margin: 8px 0 20px; }
+.brand small { font-weight: 500; color: var(--muted); font-size: .95rem; }
+.brand .sun { width: 26px; height: 26px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #ffe6a8, var(--brand) 72%); box-shadow: 0 0 18px rgba(233, 133, 58, .55); }
+
+.tabs { display: grid; grid-template-columns: 1fr 1fr; background: #f6e6d6; border-radius: 14px; padding: 4px; margin-bottom: 16px; }
+.tabs button { border: none; background: none; padding: 11px; border-radius: 10px; font: inherit; font-weight: 650; color: var(--muted); cursor: pointer; }
+.tabs button.active { background: var(--card); color: var(--text); box-shadow: 0 1px 4px rgba(90, 50, 20, .12); }
+
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 22px 20px; margin-bottom: 16px; box-shadow: 0 6px 24px rgba(120, 70, 30, .07); }
+h1 { font-size: 1.45rem; margin-bottom: 4px; }
+h2 { font-size: 1.1rem; margin-bottom: 10px; }
+.lead { color: var(--muted); margin-bottom: 18px; }
+.hint { color: var(--muted); font-size: .88rem; margin: -2px 0 10px; }
+.center { text-align: center; margin-top: 14px; }
+
+fieldset { border: none; border-top: 1px solid var(--line); padding: 16px 0 6px; }
+fieldset:first-of-type { border-top: none; padding-top: 0; }
+legend { font-weight: 750; font-size: 1.02rem; padding-bottom: 10px; }
+legend em, .field em { font-weight: 400; font-style: normal; color: var(--muted); font-size: .88em; }
+
+.field { display: block; margin-bottom: 12px; }
+.field > span { display: block; font-weight: 600; font-size: .9rem; margin-bottom: 5px; }
+input[type=text], input[type=tel], input[type=email], input[type=password], input[type=date] {
+  width: 100%; padding: 13px 14px; font: inherit; font-size: 16px; color: var(--text);
+  border: 1.5px solid #e8d6c4; border-radius: 12px; background: #fffdfb;
+}
+input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(233, 133, 58, .2); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.choice-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.choice, .skin { position: relative; display: flex; gap: 10px; align-items: center; border: 1.5px solid #e8d6c4; border-radius: 12px; padding: 12px; cursor: pointer; background: #fffdfb; }
+.choice input, .skin input { position: absolute; opacity: 0; pointer-events: none; }
+.choice small, .skin small { display: block; color: var(--muted); font-size: .84rem; }
+.choice:has(input:checked), .skin:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); }
+.choice:has(input:focus-visible), .skin:has(input:focus-visible) { box-shadow: 0 0 0 3px rgba(233, 133, 58, .3); }
+.skin-list { display: grid; gap: 8px; }
+.swatch { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(0, 0, 0, .06); }
+.s1 { background: #fde7d9; } .s2 { background: #f5d0b0; } .s3 { background: #e0ac80; }
+.s4 { background: #c08457; } .s5 { background: #8d5a35; } .s6 { background: #4f3020; }
+
+.check { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; cursor: pointer; font-size: .95rem; }
+.check input { flex: none; width: 20px; height: 20px; margin-top: 2px; accent-color: var(--brand); }
+.check ul { margin: 6px 0 0 18px; color: var(--muted); }
+.check li { margin-bottom: 2px; }
+
+.notice { background: #fff1e6; border: 1px solid #f6c9a4; color: #8a3b0a; border-radius: 12px; padding: 12px 14px; margin: 10px 0; font-size: .92rem; }
+.privacy { color: var(--muted); font-size: .84rem; margin: 6px 0 12px; }
+.error { color: var(--danger); font-weight: 600; min-height: 1.3em; margin-bottom: 8px; }
+
+.btn { display: block; width: 100%; padding: 15px; border: none; border-radius: 14px; background: var(--brand); color: #fff; font: inherit; font-weight: 750; font-size: 1.02rem; cursor: pointer; }
+.btn:hover { background: var(--brand-dark); }
+.btn:disabled { opacity: .6; }
+.btn-ghost { background: transparent; color: var(--text); border: 1.5px solid #e8d6c4; }
+.btn-ghost:hover { background: #fff1e6; }
+
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+.tick { width: 56px; height: 56px; border-radius: 50%; background: #dcfce7; margin-bottom: 12px; position: relative; }
+.tick::after { content: ""; position: absolute; left: 20px; top: 13px; width: 13px; height: 24px; border: solid var(--ok); border-width: 0 4px 4px 0; transform: rotate(45deg); }
+#done p { margin-bottom: 12px; }
+
+.account-card { text-align: center; }
+.hello { font-weight: 650; color: var(--muted); }
+.big { font-size: 4rem; font-weight: 850; color: var(--brand); line-height: 1.05; margin-top: 6px; }
+.big-label { color: var(--muted); font-weight: 600; }
+.pkg { display: inline-block; margin-top: 10px; background: var(--brand-soft); color: #8a3b0a; border-radius: 999px; padding: 4px 12px; font-weight: 650; font-size: .88rem; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
+.stats b { display: block; font-size: 1.3rem; }
+.stats span { font-size: .8rem; color: var(--muted); }
+.history-item { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.history-item:last-child { border-bottom: none; }
+.history-item small { color: var(--muted); }
+
+.sites { text-align: center; color: var(--muted); font-size: .85rem; margin-top: 20px; line-height: 1.8; }
+.sites a { color: var(--brand-dark); }
+
+@media (max-width: 420px) {
+  .two, .choice-row { grid-template-columns: 1fr; }
+}

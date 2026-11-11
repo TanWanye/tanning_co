@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#fff7ef">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<title>The Tanning Co. Coventry</title>
+<link rel="stylesheet" href="/static/css/customer.css">
+</head>
+<body>
+<main class="wrap">
+  <div class="brand"><span class="sun"></span>The Tanning Co.<small>Coventry</small></div>
+
+  <div class="tabs" id="tabs" role="tablist">
+    <button class="active" data-tab="signup" role="tab">Sign up</button>
+    <button data-tab="login" role="tab">Check my minutes</button>
+  </div>
+
+  <!-- Sign up -->
+  <section id="signup" class="card">
+    <h1>Create your account</h1>
+    <p class="lead">Takes about two minutes. You'll need to show photo ID on your first visit.</p>
+
+    <form id="signupForm" novalidate>
+      <fieldset>
+        <legend>Your details</legend>
+        <label class="field"><span>Full name</span><input name="name" type="text" autocomplete="name" required maxlength="80"></label>
+        <label class="field"><span>Mobile number</span><input name="phone" type="tel" autocomplete="tel" inputmode="tel" required placeholder="07…"></label>
+        <label class="field"><span>Email <em>(optional)</em></span><input name="email" type="email" autocomplete="email"></label>
+        <div class="two">
+          <label class="field"><span>Postcode</span><input name="postcode" type="text" autocomplete="postal-code" required></label>
+          <label class="field"><span>Date of birth</span><input name="dob" type="date" autocomplete="bday" required></label>
+        </div>
+        <div class="field"><span>Your salon</span>
+          <div class="choice-row">
+            <label class="choice"><input type="radio" name="shop" value="Wyken" required><span><b>Wyken</b><small>50 Torcross Ave</small></span></label>
+            <label class="choice"><input type="radio" name="shop" value="Earlsdon"><span><b>Earlsdon</b><small>116 Albany Rd</small></span></label>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Your skin type</legend>
+        <p class="hint">Pick the one that sounds most like you in strong sun without protection.</p>
+        <div class="skin-list">
+          <label class="skin"><input type="radio" name="skin_type" value="1" required><i class="swatch s1"></i><span><b>Type 1</b><small>Always burns, never tans. Often red hair and freckles.</small></span></label>
+          <label class="skin"><input type="radio" name="skin_type" value="2"><i class="swatch s2"></i><span><b>Type 2</b><small>Burns easily, tans a little.</small></span></label>
+          <label class="skin"><input type="radio" name="skin_type" value="3"><i class="swatch s3"></i><span><b>Type 3</b><small>Sometimes burns, tans gradually.</small></span></label>
+          <label class="skin"><input type="radio" name="skin_type" value="4"><i class="swatch s4"></i><span><b>Type 4</b><small>Rarely burns, tans easily.</small></span></label>
+          <label class="skin"><input type="radio" name="skin_type" value="5"><i class="swatch s5"></i><span><b>Type 5</b><small>Very rarely burns, tans deeply.</small></span></label>
+          <label class="skin"><input type="radio" name="skin_type" value="6"><i class="swatch s6"></i><span><b>Type 6</b><small>Never burns.</small></span></label>
+        </div>
+        <div class="notice hidden" id="skin1Notice">Sunbeds aren't recommended for skin type 1 because it burns so easily. You can still sign up, but please talk to our staff before using a sunbed.</div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Health declaration</legend>
+        <label class="check"><input type="checkbox" name="declaration" required>
+          <span>I confirm that:
+            <ul>
+              <li>I'm 18 or over and will show photo ID on my first visit</li>
+              <li>I've never had skin cancer and I'm not pregnant</li>
+              <li>I'm not taking medication that makes my skin sensitive to light (if unsure, ask your pharmacist)</li>
+              <li>I'll tell staff if any of this changes</li>
+            </ul>
+          </span>
+        </label>
+        <label class="check"><input type="checkbox" name="terms" required>
+          <span>I understand sunbeds give out UV, which increases the risk of skin cancer. I'll wear the goggles provided, follow staff advice on session times and not tan more than once in 24 hours.</span>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Offers <em>(optional)</em></legend>
+        <label class="check"><input type="checkbox" name="marketing_email"><span>Email me offers and news</span></label>
+        <label class="check"><input type="checkbox" name="marketing_sms"><span>Text me offers and news</span></label>
+        <p class="hint">You can stop these at any time.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Choose a PIN</legend>
+        <p class="hint">4–6 digits. You'll use it with your mobile number to check your minutes.</p>
+        <div class="two">
+          <label class="field"><span>PIN</span><input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="new-password" required></label>
+          <label class="field"><span>PIN again</span><input name="pin2" type="password" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="new-password" required></label>
+        </div>
+      </fieldset>
+
+      <div class="hp" aria-hidden="true"><label>Leave this empty <input name="website" type="text" tabindex="-1" autocomplete="off"></label></div>
+
+      <p class="privacy">We use your details only to run your account and keep you safe on the sunbeds. We never sell or share them. Ask at the desk if you'd like a copy of your details or want them deleted.</p>
+      <div class="error" id="signupError" role="alert"></div>
+      <button class="btn" type="submit" id="signupBtn">Create my account</button>
+    </form>
+  </section>
+
+  <!-- Signed up -->
+  <section id="done" class="card hidden">
+    <div class="tick"></div>
+    <h1>You're signed up!</h1>
+    <p class="lead">Your customer number is <b id="doneNumber"></b>.</p>
+    <p>Please bring photo ID (driving licence or passport) on your first visit so we can confirm your age.</p>
+    <div class="notice hidden" id="doneSkin1">As you chose skin type 1, please speak to our staff before using a sunbed.</div>
+    <button class="btn btn-ghost" data-tab-go="login">Check my minutes</button>
+  </section>
+
+  <!-- Log in -->
+  <section id="login" class="card hidden">
+    <h1>Check my minutes</h1>
+    <form id="loginForm">
+      <label class="field"><span>Mobile number</span><input name="phone" type="tel" autocomplete="tel" inputmode="tel" required></label>
+      <label class="field"><span>PIN</span><input name="pin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" required></label>
+      <div class="error" id="loginError" role="alert"></div>
+      <button class="btn" type="submit" id="loginBtn">View my account</button>
+    </form>
+    <p class="hint center">No PIN yet, or forgotten it? Ask at the desk and we'll set one up.</p>
+  </section>
+
+  <!-- Account -->
+  <section id="account" class="hidden">
+    <div class="card account-card">
+      <div class="hello" id="accName"></div>
+      <div class="big" id="accMinutes">0</div>
+      <div class="big-label">minutes left</div>
+      <div class="pkg hidden" id="accPackage"></div>
+      <div class="stats">
+        <div><b id="accVisits">0</b><span>Visits</span></div>
+        <div><b id="accLoyalty">0</b><span>Loyalty points</span></div>
+        <div><b id="accNumber">–</b><span>Customer no.</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Recent purchases</h2>
+      <div id="accHistory"></div>
+    </div>
+    <button class="btn btn-ghost" id="logoutBtn">Log out</button>
+  </section>
+
+  <footer class="sites">
+    <div><b>Wyken</b> · 50 Torcross Ave, CV2 3NQ · <a href="tel:02476659966">024 7665 9966</a></div>
+    <div><b>Earlsdon</b> · 116 Albany Rd, CV5 6NG · <a href="tel:02476674922">024 7667 4922</a></div>
+  </footer>
+</main>
+<script src="/static/js/customer.js"></script>
+</body>
+</html>

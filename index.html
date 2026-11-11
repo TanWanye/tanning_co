@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<title>Bed board | The Tanning Co. Coventry</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="sun"></span><div>The Tanning Co.<small>Coventry · Staff</small></div></div>
+
+  <div class="seg" id="siteSwitch" role="tablist" aria-label="Choose salon">
+    <button data-action="site" data-site="Wyken">Wyken</button>
+    <button data-action="site" data-site="Earlsdon">Earlsdon</button>
+    <button data-action="site" data-site="all">Both</button>
+  </div>
+
+  <div class="search-wrap">
+    <span class="icon" aria-hidden="true"></span>
+    <input type="search" id="search" placeholder="Find customer — name, phone or number" autocomplete="off" aria-label="Find customer">
+    <div class="search-results hidden" id="searchResults"></div>
+  </div>
+  <button class="btn" data-action="new-customer">+ New customer</button>
+
+  <div class="spacer"></div>
+
+  <div class="menu">
+    <button class="btn btn-ghost" data-action="toggle-menu" data-menu="moreMenu">More ▾</button>
+    <div class="menu-list hidden" id="moreMenu">
+      <button data-action="report">Daily report</button>
+      <div class="admin-only">
+        <div class="sep"></div>
+        <div class="label">Manager</div>
+        <button data-action="email-campaign">Email campaign</button>
+        <button data-action="sms-campaign">SMS campaign</button>
+        <button data-action="import">Import customers (Excel)</button>
+        <a href="/api/export/customers" download>Export customers (Excel)</a>
+        <div class="sep"></div>
+        <button data-action="staff-accounts">Staff accounts</button>
+        <button data-action="activity">Activity log</button>
+        <button data-action="settings">Email &amp; SMS settings</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="clock" id="clock"></div>
+
+  <div class="menu">
+    <button class="btn btn-ghost user-chip" data-action="toggle-menu" data-menu="userMenu">
+      <span class="avatar" id="userInitial">?</span><span id="userName"></span> ▾
+    </button>
+    <div class="menu-list hidden" id="userMenu">
+      <div class="label" id="userRole"></div>
+      <button data-action="change-password">Change my password</button>
+      <a href="/customer" target="_blank" rel="noopener">Open customer sign-up page</a>
+      <div class="sep"></div>
+      <button data-action="logout">Sign out</button>
+    </div>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="board" id="board" aria-live="polite"></section>
+  <aside class="side">
+    <div class="panel">
+      <h3>Queue <span class="badge-count" id="queueCount">0</span></h3>
+      <div id="queueList"></div>
+    </div>
+    <div class="panel">
+      <h3>New sign-ups to check <span class="badge-count" id="signupCount">0</span></h3>
+      <p class="muted small" id="signupHelp">Customers who signed up themselves. Check photo ID before their first session.</p>
+      <div id="signupList"></div>
+    </div>
+  </aside>
+</main>
+
+<div id="modalRoot"></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="/static/js/staff.js"></script>
+</body>
+</html>
