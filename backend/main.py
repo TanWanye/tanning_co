@@ -292,7 +292,12 @@ def assign_room(queue_id: int, data: AssignRoom):
         raise HTTPException(status_code=400, detail="Room not available")
     
     items = queue_item["items"].lower()
-    minutes = 10 if "10 min" in items else 5 if "5 min" in items else 2 if "2 min" in items else 1
+    # Parse minutes from product names like "3 MIN", "6 MIN", "15 MIN", etc.
+    minutes = 10
+    for m in [15, 12, 9, 6, 3, 30, 60, 100, 120]:
+        if str(m) in items or f"{m} min" in items:
+            minutes = m
+            break
     
     c.execute("""UPDATE rooms 
                  SET status = 'occupied', 
@@ -346,6 +351,14 @@ def customer_history(customer_id: int):
     ).fetchall()
     conn.close()
     return [dict(o) for o in orders]
+
+@app.post("/api/rooms/{room_id}/clean")
+def mark_clean(room_id: int):
+    conn = get_db()
+    conn.execute("UPDATE rooms SET status = 'available' WHERE id = ?", (room_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Room available"}
 
 @app.post("/api/rooms/{room_id}/finish")
 def finish_session(room_id: int):
