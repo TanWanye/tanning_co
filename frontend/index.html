@@ -303,6 +303,7 @@ async function loadRooms() {
       <span style="color:${r.status==='available'?'#2ecc71':r.status==='occupied'?'#f39c12':'#e74c3c'}">${r.status.toUpperCase()}</span>
       ${r.customer_name ? `<br><small>${r.customer_name} • ${r.remaining_minutes}m left</small>` : ''}
       ${r.status === 'cleaning' ? `<br><button class="btn btn-green" style="padding:4px 8px;font-size:0.75rem;margin-top:4px" onclick="event.stopPropagation(); markClean(${r.id})">Mark Clean</button>` : ''}
+      ${r.status === 'occupied' ? `<br><button class="btn" style="padding:4px 8px;font-size:0.75rem;margin-top:4px" onclick="event.stopPropagation(); finishSession(${r.id})">Finish Session</button>` : ''}
     </div>
   `).join('');
 }
@@ -509,8 +510,14 @@ async function assignRoom(roomId) {
     await loadRooms();
     await loadQueue();
   } else {
-    const err = await res.json();
-    alert(err.detail || "Could not assign room");
+    let msg = "Could not assign room";
+    try {
+      const err = await res.json();
+      msg = err.detail || JSON.stringify(err);
+    } catch(e) {
+      msg = await res.text();
+    }
+    alert(msg);
   }
 }
 
@@ -521,6 +528,12 @@ async function cancelQueue(id) {
 
 async function markClean(roomId) {
   await fetch(`/api/rooms/${roomId}/clean`, {method: "POST"});
+  await loadRooms();
+}
+
+async function finishSession(roomId) {
+  if (!confirm("Finish session and mark room for cleaning?")) return;
+  await fetch(`/api/rooms/${roomId}/finish`, {method: "POST"});
   await loadRooms();
 }
 
