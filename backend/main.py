@@ -317,15 +317,19 @@ def create_order(order: OrderCreate):
               (order.customer_id, order.total, order.discount, order.payment_method, items_str, order.shop or "Unknown"))
     order_id = c.lastrowid
     
+    # Get customer name
+    customer = c.execute("SELECT name FROM customers WHERE id = ?", (order.customer_id,)).fetchone()
+    customer_name = customer["name"] if customer else "Unknown"
+    
     # Only add to queue if it's a session (not a pure package purchase)
     is_package_only = all(
-        "pack" in i.name.lower() or "unlimited" in i.name.lower() 
+        "pack" in i.name.lower() or "unlimited" in i.name.lower() or "min" in i.name.lower()
         for i in order.items
     )
     if not is_package_only:
         c.execute("""INSERT INTO queue (customer_id, customer_name, items, total, payment_method)
                      VALUES (?, ?, ?, ?, ?)""",
-                  (order.customer_id, customer["name"], items_str, order.total, order.payment_method))
+                  (order.customer_id, customer_name, items_str, order.total, order.payment_method))
     
     # Update customer stats
     c.execute("""UPDATE customers 
@@ -336,12 +340,22 @@ def create_order(order: OrderCreate):
                  WHERE id = ?""",
               (int(order.total), order.total, order.customer_id))
     
-    # Handle minutes packs and unlimited packages
+    # Handle minutes packs, single sessions, and unlimited packages
     for item in order.items:
         name = item.name.lower()
         if "min pack" in name:
             mins = 0
             for m in [120, 100, 60, 30]:
+                if str(m) in name:
+                    mins = m
+                    break
+            if mins > 0:
+                c.execute("UPDATE customers SET remaining_minutes = remaining_minutes + ? WHERE id = ?",
+                          (mins * item.qty, order.customer_id))
+        elif " min" in name and "pack" not in name and "unlimited" not in name:
+            # Single session: 3 MIN, 6 MIN, etc.
+            mins = 0
+            for m in [15, 12, 9, 6, 3]:
                 if str(m) in name:
                     mins = m
                     break

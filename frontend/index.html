@@ -461,8 +461,14 @@ async function createCustomer() {
     closeModal('newCustomerModal');
     openProfile(data.id);
   } else {
-    const err = await res.json();
-    alert(err.detail || "Error creating customer");
+    let msg = "Error creating customer";
+    try {
+      const err = await res.json();
+      msg = err.detail || JSON.stringify(err);
+    } catch(e) {
+      msg = await res.text();
+    }
+    alert(msg);
   }
 }
 
@@ -920,11 +926,13 @@ async function selectMinutes(mins) {
   let rooms = await res.json();
   if (currentShop) rooms = rooms.filter(r => r.name.startsWith(currentShop));
   const available = rooms.filter(r => r.status === 'available');
-  document.getElementById('availableBedsForMinutes').innerHTML = available.map(r => `
-    <div class="room-card status-available" onclick="assignWithMinutes(${r.id})">
-      <strong>${r.name}</strong><br>${r.type}
+  document.getElementById('availableBedsForMinutes').innerHTML = available.length ? available.map(r => `
+    <div class="room-card status-available" style="cursor:pointer" onclick="assignWithMinutes(${r.id})">
+      <img src="${r.type === 'Stand-up' ? '/static/images/standup.jpg' : '/static/images/liedown.png'}" style="width:100%;height:60px;object-fit:cover;border-radius:4px;margin-bottom:4px" onerror="this.style.display='none'">
+      <strong>${r.name.replace(currentShop ? currentShop + ' ' : '', '')}</strong><br>
+      <small>${r.type}</small>
     </div>
-  `).join('') || '<p>No available beds</p>';
+  `).join('') : '<p>No available beds in this shop. Select a shop first or wait for a bed to free.</p>';
 }
 
 async function assignWithMinutes(roomId) {
