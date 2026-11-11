@@ -78,6 +78,17 @@ def init_db():
         FOREIGN KEY (customer_id) REFERENCES customers(id)
     )''')
     
+    # Sessions log for daily reports
+    c.execute('''CREATE TABLE IF NOT EXISTS sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_name TEXT,
+        room_name TEXT,
+        shop TEXT,
+        minutes INTEGER,
+        amount REAL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    
     # Queue
     c.execute('''CREATE TABLE IF NOT EXISTS queue (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -137,6 +148,12 @@ def init_db():
     ]
     c.executemany("INSERT INTO products (name, price, category, image) VALUES (?, ?, ?, ?)", products)
     
+    # Add postcode column if missing
+    try:
+        c.execute("ALTER TABLE customers ADD COLUMN postcode TEXT")
+    except:
+        pass
+    
     # Add package columns if missing
     try:
         c.execute("ALTER TABLE customers ADD COLUMN package_type TEXT")
@@ -169,6 +186,8 @@ class CustomerCreate(BaseModel):
     name: str
     phone: str
     email: Optional[str] = ""
+    postcode: Optional[str] = ""
+    shop: Optional[str] = None
 
 class OrderItem(BaseModel):
     id: int
@@ -182,6 +201,7 @@ class OrderCreate(BaseModel):
     discount: int = 0
     payment_method: str
     total: float
+    shop: Optional[str] = None
 
 class AssignRoom(BaseModel):
     queue_id: int
@@ -246,8 +266,8 @@ def create_customer(customer: CustomerCreate):
     conn = get_db()
     try:
         c = conn.cursor()
-        c.execute("INSERT INTO customers (name, phone, email) VALUES (?, ?, ?)",
-                  (customer.name, customer.phone, customer.email))
+        c.execute("INSERT INTO customers (name, phone, email, postcode, shop) VALUES (?, ?, ?, ?, ?)",
+                  (customer.name, customer.phone, customer.email, customer.postcode, customer.shop))
         conn.commit()
         new_id = c.lastrowid
         conn.close()
@@ -255,6 +275,29 @@ def create_customer(customer: CustomerCreate):
     except sqlite3.IntegrityError:
         conn.close()
         raise HTTPException(status_code=400, detail="Phone number already exists")
+
+@app.put("/api/customers/{customer_id}")
+def update_customer(customer_id: int, customer: CustomerCreate):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("""UPDATE customers 
+                 SET name = ?, phone = ?, email = ?, postcode = ?, shop = ?
+                 WHERE id = ?""",
+              (customer.name, customer.phone, customer.email, customer.postcode, customer.shop, customer_id))
+    if c.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Customer not found")
+    conn.commit()
+    conn.close()
+    return {"message": "Customer updated"}
+
+@app.delete("/api/customers/{customer_id}")
+def delete_customer(customer_id: int):
+    conn = get_db()
+    conn.execute("DELETE FROM customers WHERE id = ?", (customer_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Customer deleted"}
 
 @app.get("/api/products")
 def get_products():
@@ -269,9 +312,9 @@ def create_order(order: OrderCreate):
     c = conn.cursor()
     
     items_str = ", ".join([f"{i.qty}x {i.name}" for i in order.items])
-    c.execute("""INSERT INTO orders (customer_id, total, discount, payment_method, items)
-                 VALUES (?, ?, ?, ?, ?)""",
-              (order.customer_id, order.total, order.discount, order.payment_method, items_str))
+    c.execute("""INSERT INTO orders (customer_id, total, discount, payment_method, items, shop)
+                 VALUES (?, ?, ?, ?, ?, ?)""",
+              (order.customer_id, order.total, order.discount, order.payment_method, items_str, order.shop or "Unknown"))
     order_id = c.lastrowid
     
     # Only add to queue if it's a session (not a pure package purchase)
@@ -431,12 +474,18 @@ def finish_session(room_id: int):
     
     minutes_used = room["remaining_minutes"] or 0
     customer_name = room["customer_name"]
+    shop = "Wyken" if "Wyken" in (room["name"] or "") else "Earlsdon" if "Earlsdon" in (room["name"] or "") else "Unknown"
     
     # Deduct from customer if we can match by name
     if customer_name and minutes_used > 0:
         c.execute("""UPDATE customers 
                      SET remaining_minutes = MAX(0, remaining_minutes - ?)
                      WHERE name = ?""", (minutes_used, customer_name))
+    
+    # Log the session for the daily report
+    c.execute("""INSERT INTO sessions (customer_name, room_name, shop, minutes)
+                 VALUES (?, ?, ?, ?)""",
+              (customer_name, room["name"], shop, minutes_used))
     
     c.execute("""UPDATE rooms 
                  SET status = 'available', customer_name = NULL, remaining_minutes = 0 
@@ -759,6 +808,62 @@ def use_minutes(data: dict):
     conn.commit()
     conn.close()
     return {"message": "Bed assigned", "minutes_used": minutes}
+
+@app.get("/api/report/daily")
+def daily_report(date: str = None):
+    """Daily report: who used, minutes, money — per shop and combined"""
+    from datetime import datetime
+    if not date:
+        date = datetime.now().strftime("%Y-%m-%d")
+    
+    conn = get_db()
+    # Sessions for the day
+    sessions = conn.execute(
+        "SELECT * FROM sessions WHERE date(created_at) = ? ORDER BY created_at",
+        (date,)
+    ).fetchall()
+    
+    # Money from orders for the day, grouped by shop
+    orders = conn.execute(
+        "SELECT total, shop FROM orders WHERE date(created_at) = ?",
+        (date,)
+    ).fetchall()
+    # Total remaining minutes per shop (from customers registered at each shop)
+    minutes_left = {}
+    for shop_name in ["Wyken", "Earlsdon"]:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(remaining_minutes), 0) as total FROM customers WHERE shop = ?",
+            (shop_name,)
+        ).fetchone()
+        minutes_left[shop_name] = row["total"] if row else 0
+    
+    conn.close()
+    
+    shops = {"Wyken": {"sessions": [], "minutes": 0, "money": 0, "minutes_left": minutes_left.get("Wyken", 0)},
+             "Earlsdon": {"sessions": [], "minutes": 0, "money": 0, "minutes_left": minutes_left.get("Earlsdon", 0)}}
+    total_minutes = 0
+    total_money = 0
+    
+    for o in orders:
+        amt = o["total"] or 0
+        total_money += amt
+        shop = o["shop"] if o["shop"] in shops else None
+        if shop:
+            shops[shop]["money"] += amt
+    
+    for s in sessions:
+        shop = s["shop"] if s["shop"] in shops else "Wyken"
+        shops[shop]["sessions"].append(dict(s))
+        shops[shop]["minutes"] += s["minutes"] or 0
+        total_minutes += s["minutes"] or 0
+    
+    return {
+        "date": date,
+        "shops": shops,
+        "total_minutes": total_minutes,
+        "total_money": total_money,
+        "order_count": len(orders)
+    }
 
 # Serve frontend
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

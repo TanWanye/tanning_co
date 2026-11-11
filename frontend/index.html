@@ -130,7 +130,7 @@ input, select {
     <button class="btn btn-outline" onclick="showEmailSettings()" style="width:100%;margin-top:4px">⚙️ Email Settings</button>
     <button class="btn btn-outline" onclick="showSMSCampaign()" style="width:100%;margin-top:4px">📱 SMS Campaign</button>
     <button class="btn btn-outline" onclick="showSMSSettings()" style="width:100%;margin-top:4px">📲 SMS Settings</button>
-    <button class="btn btn-outline" onclick="window.open('/customer', '_blank')" style="width:100%;margin-top:4px">👤 Customer App Link</button>
+    <button class="btn btn-outline" onclick="showDailyReport()" style="width:100%;margin-top:4px">📊 Daily Report</button>
   </div>
   <div class="main" id="mainContent">
     <h2>Main Board — The Tanning Co. Coventry</h2>
@@ -173,6 +173,24 @@ input, select {
   </div>
 </div>
 
+<!-- Edit Customer Modal -->
+<div class="modal" id="editCustomerModal">
+  <div class="modal-content">
+    <h2>Edit Customer</h2>
+    <input id="editName" placeholder="Full Name">
+    <input id="editPhone" placeholder="Phone Number">
+    <input id="editEmail" placeholder="Email (optional)">
+    <input id="editPostcode" placeholder="Postcode (optional)">
+    <select id="editShop" style="width:100%;padding:10px;margin:8px 0;border-radius:6px;border:none">
+      <option value="">No shop</option>
+      <option value="Wyken">Wyken</option>
+      <option value="Earlsdon">Earlsdon</option>
+    </select>
+    <button class="btn" onclick="saveCustomer()">Save</button>
+    <button class="btn btn-outline" onclick="closeModal('editCustomerModal')">Cancel</button>
+  </div>
+</div>
+
 <!-- New Customer Modal -->
 <div class="modal" id="newCustomerModal">
   <div class="modal-content">
@@ -180,6 +198,7 @@ input, select {
     <input id="newName" placeholder="Full Name">
     <input id="newPhone" placeholder="Phone Number">
     <input id="newEmail" placeholder="Email (optional)">
+    <input id="newPostcode" placeholder="Postcode (optional)">
     <button class="btn" onclick="createCustomer()">Create</button>
     <button class="btn btn-outline" onclick="closeModal('newCustomerModal')">Cancel</button>
   </div>
@@ -193,16 +212,9 @@ input, select {
 <!-- Shop Modal -->
 <div class="modal" id="shopModal">
   <div class="modal-content">
-    <h2>New Order</h2>
+    <h2>Add to Account</h2>
+    <p style="color:var(--muted);margin-bottom:12px">Select one product — it will be added to the customer's card.</p>
     <div class="grid" id="productsGrid"></div>
-    <h3 style="margin-top:20px">Basket</h3>
-    <div id="basket"></div>
-    <div style="margin:12px 0">
-      <label>Discount:</label>
-      <div id="discountBtns"></div>
-    </div>
-    <div style="text-align:right;font-size:1.2rem">Total: £<span id="total">0.00</span></div>
-    <button class="btn" onclick="goToPayment()">Next → Payment</button>
     <button class="btn btn-outline" onclick="closeModal('shopModal')">Cancel</button>
   </div>
 </div>
@@ -309,6 +321,16 @@ input, select {
       <div class="grid" id="availableBedsForMinutes"></div>
     </div>
     <button class="btn btn-outline" onclick="closeModal('useMinutesModal')">Cancel</button>
+  </div>
+</div>
+
+<!-- Daily Report Modal -->
+<div class="modal" id="reportModal">
+  <div class="modal-content" style="max-width:700px">
+    <h2>Daily Report</h2>
+    <input type="date" id="reportDate" onchange="loadReport()">
+    <div id="reportContent" style="margin-top:16px"></div>
+    <button class="btn btn-outline" onclick="closeModal('reportModal')">Close</button>
   </div>
 </div>
 
@@ -426,12 +448,13 @@ async function createCustomer() {
   const name = document.getElementById('newName').value.trim();
   const phone = document.getElementById('newPhone').value.trim();
   const email = document.getElementById('newEmail').value.trim();
+  const postcode = document.getElementById('newPostcode').value.trim();
   if (!name || !phone) return alert("Name and phone required");
   
   const res = await fetch("/api/customers", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({name, phone, email})
+    body: JSON.stringify({name, phone, email, postcode, shop: currentShop || null})
   });
   if (res.ok) {
     const data = await res.json();
@@ -468,6 +491,7 @@ async function openProfile(id) {
         <div>
           <h2>${p.name || 'Unknown'}</h2>
           <p>${p.phone || ''} • ${p.email || ''}</p>
+          ${p.postcode ? `<p>Postcode: ${p.postcode}</p>` : ''}
         </div>
       </div>
       <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
@@ -488,8 +512,10 @@ async function openProfile(id) {
       <div style="max-height:250px;overflow-y:auto">${historyHtml}</div>
       
       <div style="margin-top:16px">
-        <button class="btn" onclick="startOrder()">Buy Package / Minutes</button>
+        <button class="btn" onclick="startOrder()">Add to Account</button>
         ${(p.remaining_minutes || 0) > 0 ? `<button class="btn" onclick="useMinutesFlow()">Use Minutes on Bed</button>` : ''}
+        <button class="btn btn-outline" onclick="editCustomer()">Edit</button>
+        <button class="btn btn-red" onclick="deleteCustomer()">Delete</button>
         <button class="btn btn-outline" onclick="closeModal('profileModal')">Close</button>
       </div>
     `;
@@ -518,86 +544,78 @@ async function loadBedUsage(customerId) {
   `).join('') : '<p style="color:var(--muted);font-size:0.85rem">No bed usage recorded yet</p>';
 }
 
+function editCustomer() {
+  if (!currentCustomer) return;
+  document.getElementById('editName').value = currentCustomer.name || '';
+  document.getElementById('editPhone').value = currentCustomer.phone || '';
+  document.getElementById('editEmail').value = currentCustomer.email || '';
+  document.getElementById('editPostcode').value = currentCustomer.postcode || '';
+  document.getElementById('editShop').value = currentCustomer.shop || '';
+  document.getElementById('editCustomerModal').style.display = 'flex';
+}
+
+async function saveCustomer() {
+  const name = document.getElementById('editName').value.trim();
+  const phone = document.getElementById('editPhone').value.trim();
+  const email = document.getElementById('editEmail').value.trim();
+  const postcode = document.getElementById('editPostcode').value.trim();
+  const shop = document.getElementById('editShop').value || null;
+  if (!name || !phone) return alert("Name and phone required");
+  
+  const res = await fetch(`/api/customers/${currentCustomer.id}`, {
+    method: "PUT",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({name, phone, email, postcode, shop})
+  });
+  if (res.ok) {
+    closeModal('editCustomerModal');
+    openProfile(currentCustomer.id);
+  } else {
+    const err = await res.json();
+    alert(err.detail || "Could not update");
+  }
+}
+
+async function deleteCustomer() {
+  if (!currentCustomer) return;
+  if (!confirm(`Delete ${currentCustomer.name}? This cannot be undone.`)) return;
+  const res = await fetch(`/api/customers/${currentCustomer.id}`, {method: "DELETE"});
+  if (res.ok) {
+    closeModal('profileModal');
+    alert("Customer deleted");
+  } else {
+    alert("Could not delete");
+  }
+}
+
 function startOrder() {
   closeModal('profileModal');
   cart = [];
-  discount = 0;
   renderProducts();
-  renderBasket();
   document.getElementById('shopModal').style.display = 'flex';
 }
 
 function renderProducts() {
   document.getElementById('productsGrid').innerHTML = products.map(p => `
-    <div class="product-card" onclick="addToCart(${p.id})">
+    <div class="product-card" onclick="addProductToAccount(${p.id})">
       <img src="${p.image}" style="width:100%;height:100px;object-fit:cover;border-radius:8px" onerror="this.style.display='none'">
       <strong>${p.name}</strong><br>
       £${p.price.toFixed(2)}
     </div>
   `).join('');
-  document.getElementById('discountBtns').innerHTML = [5,10,15,20,25,30].map(d => 
-    `<button class="btn btn-outline" onclick="setDiscount(${d})">${d}%</button>`
-  ).join('');
 }
 
-function addToCart(id) {
-  const p = products.find(x => x.id === id);
-  const existing = cart.find(x => x.id === id);
-  if (existing) existing.qty++;
-  else cart.push({...p, qty:1});
-  renderBasket();
-}
-
-function setDiscount(d) {
-  discount = d;
-  renderBasket();
-}
-
-function renderBasket() {
-  const sub = cart.reduce((s,i) => s + i.price * i.qty, 0);
-  const discAmount = sub * (discount/100);
-  const total = sub - discAmount;
-  document.getElementById('basket').innerHTML = cart.map(i => `
-    <div class="cart-item">
-      ${i.qty}x ${i.name} 
-      <span>£${(i.price*i.qty).toFixed(2)} <button onclick="removeFromCart(${i.id})" style="background:none;border:none;color:#e74c3c;cursor:pointer">✕</button></span>
-    </div>
-  `).join('') || '<p>Empty basket</p>';
-  document.getElementById('total').textContent = total.toFixed(2);
-}
-
-function removeFromCart(id) {
-  cart = cart.filter(i => i.id !== id);
-  renderBasket();
-}
-
-function goToPayment() {
-  if (cart.length === 0) return alert('Add items first');
-  closeModal('shopModal');
+async function addProductToAccount(productId) {
+  const p = products.find(x => x.id === productId);
+  if (!p || !currentCustomer) return;
   
-  // Show package option only if customer has minutes
-  const mins = currentCustomer?.remaining_minutes || 0;
-  const pkgBtn = document.getElementById('usePackageBtn');
-  const pkgInfo = document.getElementById('packageInfo');
-  if (mins > 0) {
-    pkgBtn.style.display = 'block';
-    pkgInfo.textContent = `Customer has ${mins} minutes remaining on package`;
-  } else {
-    pkgBtn.style.display = 'none';
-    pkgInfo.textContent = 'No package minutes available — pay at till';
-  }
-  
-  document.getElementById('paymentModal').style.display = 'flex';
-}
-
-async function completePayment(method) {
-  const total = parseFloat(document.getElementById('total').textContent);
   const payload = {
     customer_id: currentCustomer.id,
-    items: cart.map(i => ({id: i.id, name: i.name, price: i.price, qty: i.qty})),
-    discount: discount,
-    payment_method: method,
-    total: total
+    items: [{id: p.id, name: p.name, price: p.price, qty: 1}],
+    discount: 0,
+    payment_method: "Add to Account",
+    total: p.price,
+    shop: currentShop || "Unknown"
   };
   
   const res = await fetch("/api/orders", {
@@ -607,13 +625,11 @@ async function completePayment(method) {
   });
   
   if (res.ok) {
-    closeModal('paymentModal');
-    cart = [];
-    await loadQueue();
-    await loadRooms();
-    alert(`Payment of £${total.toFixed(2)} via ${method} successful! Customer added to queue.`);
+    closeModal('shopModal');
+    alert(`${p.name} added to ${currentCustomer.name}'s account`);
+    openProfile(currentCustomer.id);
   } else {
-    alert("Error creating order");
+    alert("Could not add product");
   }
 }
 
@@ -930,6 +946,39 @@ async function assignWithMinutes(roomId) {
     const err = await res.json();
     alert(err.detail || 'Could not assign');
   }
+}
+
+function showDailyReport() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('reportDate').value = today;
+  document.getElementById('reportModal').style.display = 'flex';
+  loadReport();
+}
+
+async function loadReport() {
+  const date = document.getElementById('reportDate').value;
+  const res = await fetch(`/api/report/daily?date=${date}`);
+  const data = await res.json();
+  
+  let html = `<h3>${data.date}</h3>`;
+  for (const [shop, info] of Object.entries(data.shops)) {
+    html += `<div class="room-card" style="margin:12px 0">
+      <strong>📍 ${shop}</strong><br>
+      Sessions: ${info.sessions.length} • Minutes used today: ${info.minutes}<br>
+      Money taken: £${(info.money || 0).toFixed(2)}<br>
+      Total minutes left (customers at this shop): ${info.minutes_left || 0}<br>
+      <div style="max-height:150px;overflow-y:auto;margin-top:8px;font-size:0.85rem">
+        ${info.sessions.map(s => `${s.customer_name || 'Unknown'} — ${s.minutes} min (${s.room_name})`).join('<br>') || 'No sessions'}
+      </div>
+    </div>`;
+  }
+  html += `<div class="room-card" style="border-color:#2ecc71">
+    <strong>Combined Total</strong><br>
+    Minutes used: ${data.total_minutes}<br>
+    Money taken: £${(data.total_money || 0).toFixed(2)} (${data.order_count} orders)
+  </div>`;
+  
+  document.getElementById('reportContent').innerHTML = html;
 }
 
 // Init
