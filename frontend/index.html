@@ -314,8 +314,9 @@ input, select {
   <div class="modal-content">
     <h2>Use Minutes</h2>
     <p id="useMinutesInfo"></p>
-    <label>How many minutes?</label>
-    <div id="minuteOptions" style="margin:12px 0"></div>
+    <label>How many minutes do they want to use?</label>
+    <input type="number" id="customMinutes" min="1" placeholder="Enter minutes" style="width:100%;padding:10px;margin:8px 0;border-radius:6px;border:none">
+    <button class="btn" onclick="selectCustomMinutes()">Next — Choose Bed</button>
     <div id="bedOptions" style="display:none;margin-top:16px">
       <h3>Select Bed</h3>
       <div class="grid" id="availableBedsForMinutes"></div>
@@ -911,28 +912,31 @@ function useMinutesFlow() {
   if (!currentCustomer) return;
   const mins = currentCustomer.remaining_minutes || 0;
   document.getElementById('useMinutesInfo').textContent = `${currentCustomer.name} has ${mins} minutes remaining`;
-  const options = [3, 6, 9, 12, 15].filter(m => m <= mins);
-  document.getElementById('minuteOptions').innerHTML = options.map(m => 
-    `<button class="btn btn-outline" style="margin:4px" onclick="selectMinutes(${m})">${m} min</button>`
-  ).join('') || '<p>Not enough minutes for a session</p>';
+  document.getElementById('customMinutes').value = '';
+  document.getElementById('customMinutes').max = mins;
   document.getElementById('bedOptions').style.display = 'none';
   document.getElementById('useMinutesModal').style.display = 'flex';
+  document.getElementById('customMinutes').focus();
 }
 
-async function selectMinutes(mins) {
+async function selectCustomMinutes() {
+  const mins = parseInt(document.getElementById('customMinutes').value);
+  const available = currentCustomer.remaining_minutes || 0;
+  if (!mins || mins < 1) return alert("Enter a number of minutes");
+  if (mins > available) return alert(`Only ${available} minutes available`);
   selectedMinutes = mins;
   document.getElementById('bedOptions').style.display = 'block';
   const res = await fetch("/api/rooms");
   let rooms = await res.json();
   if (currentShop) rooms = rooms.filter(r => r.name.startsWith(currentShop));
-  const available = rooms.filter(r => r.status === 'available');
-  document.getElementById('availableBedsForMinutes').innerHTML = available.length ? available.map(r => `
+  const avail = rooms.filter(r => r.status === 'available');
+  document.getElementById('availableBedsForMinutes').innerHTML = avail.length ? avail.map(r => `
     <div class="room-card status-available" style="cursor:pointer" onclick="assignWithMinutes(${r.id})">
       <img src="${r.type === 'Stand-up' ? '/static/images/standup.jpg' : '/static/images/liedown.png'}" style="width:100%;height:60px;object-fit:cover;border-radius:4px;margin-bottom:4px" onerror="this.style.display='none'">
       <strong>${r.name.replace(currentShop ? currentShop + ' ' : '', '')}</strong><br>
       <small>${r.type}</small>
     </div>
-  `).join('') : '<p>No available beds in this shop. Select a shop first or wait for a bed to free.</p>';
+  `).join('') : '<p>No available beds. Select a shop first.</p>';
 }
 
 async function assignWithMinutes(roomId) {

@@ -266,15 +266,24 @@ def create_customer(customer: CustomerCreate):
     conn = get_db()
     try:
         c = conn.cursor()
+        # Ensure columns exist
+        try:
+            c.execute("ALTER TABLE customers ADD COLUMN postcode TEXT")
+        except:
+            pass
+        try:
+            c.execute("ALTER TABLE customers ADD COLUMN shop TEXT")
+        except:
+            pass
         c.execute("INSERT INTO customers (name, phone, email, postcode, shop) VALUES (?, ?, ?, ?, ?)",
-                  (customer.name, customer.phone, customer.email, customer.postcode, customer.shop))
+                  (customer.name, customer.phone or "", customer.email or "", customer.postcode or "", customer.shop or ""))
         conn.commit()
         new_id = c.lastrowid
         conn.close()
         return {"id": new_id, "message": "Customer created"}
-    except sqlite3.IntegrityError:
+    except Exception as e:
         conn.close()
-        raise HTTPException(status_code=400, detail="Phone number already exists")
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.put("/api/customers/{customer_id}")
 def update_customer(customer_id: int, customer: CustomerCreate):
@@ -310,6 +319,12 @@ def get_products():
 def create_order(order: OrderCreate):
     conn = get_db()
     c = conn.cursor()
+    
+    # Ensure shop column exists on orders
+    try:
+        c.execute("ALTER TABLE orders ADD COLUMN shop TEXT")
+    except:
+        pass
     
     items_str = ", ".join([f"{i.qty}x {i.name}" for i in order.items])
     c.execute("""INSERT INTO orders (customer_id, total, discount, payment_method, items, shop)
