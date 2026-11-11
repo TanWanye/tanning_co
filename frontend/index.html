@@ -137,19 +137,27 @@ input, select {
     <p style="color:var(--muted);margin-bottom:16px">Two sites • All data saved permanently</p>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-      <div class="room-card">
+      <div class="room-card" style="cursor:pointer" onclick="selectShop('Wyken')">
         <strong>📍 Wyken</strong><br>
         50 Torcross Ave, CV2 3NQ<br>
         📞 024 7665 9966<br>
         <small style="color:var(--muted)">Mon–Sat 9:00–21:00<br>Sun 10:00–15:00</small>
+        <div style="margin-top:8px"><button class="btn" style="width:100%">View Wyken Beds</button></div>
       </div>
-      <div class="room-card">
+      <div class="room-card" style="cursor:pointer" onclick="selectShop('Earlsdon')">
         <strong>📍 Earlsdon</strong><br>
         116 Albany Rd, CV5 6NG<br>
         📞 024 7667 4922<br>
         <small style="color:var(--muted)">Mon–Fri 9:00–21:00<br>Sat 9:00–19:00 • Sun 10:00–15:00</small>
+        <div style="margin-top:8px"><button class="btn" style="width:100%">View Earlsdon Beds</button></div>
       </div>
     </div>
+
+    <div id="currentShopBar" style="display:none;margin-bottom:16px;padding:12px;background:#1a3a5c;border-radius:8px">
+      <strong id="currentShopName">Wyken</strong> beds
+      <button class="btn btn-outline" style="float:right;padding:4px 12px" onclick="selectShop(null)">Show Both Shops</button>
+    </div>
+    <div id="shopRooms" class="grid" style="margin-bottom:20px"></div>
 
     <div id="dashboardInfo">Search a customer or assign from the queue to get started.</div>
   </div>
@@ -293,9 +301,29 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
+let currentShop = null; // null = all, or 'Wyken' / 'Earlsdon'
+
+function selectShop(shop) {
+  currentShop = shop;
+  const bar = document.getElementById('currentShopBar');
+  if (shop) {
+    bar.style.display = 'block';
+    document.getElementById('currentShopName').textContent = shop;
+  } else {
+    bar.style.display = 'none';
+  }
+  loadRooms();
+}
+
 async function loadRooms() {
   const res = await fetch("/api/rooms");
-  const rooms = await res.json();
+  let rooms = await res.json();
+  
+  // Filter by selected shop
+  if (currentShop) {
+    rooms = rooms.filter(r => r.name.startsWith(currentShop));
+  }
+  
   const el = document.getElementById('roomsList');
   el.innerHTML = rooms.map(r => `
     <div class="room-card status-${r.status}" onclick="selectRoom(${r.id})">
@@ -306,6 +334,18 @@ async function loadRooms() {
       ${r.status === 'occupied' ? `<br><button class="btn" style="padding:4px 8px;font-size:0.75rem;margin-top:4px" onclick="event.stopPropagation(); finishSession(${r.id})">Finish Session</button>` : ''}
     </div>
   `).join('');
+  
+  // Also show on main board
+  const shopEl = document.getElementById('shopRooms');
+  if (shopEl) {
+    shopEl.innerHTML = rooms.map(r => `
+      <div class="room-card status-${r.status}">
+        <strong>${r.name.replace(currentShop ? currentShop + ' ' : '', '')}</strong><br>
+        <span style="color:${r.status==='available'?'#2ecc71':r.status==='occupied'?'#f39c12':'#e74c3c'}">${r.status.toUpperCase()}</span>
+        ${r.customer_name ? `<br><small>${r.customer_name}</small>` : ''}
+      </div>
+    `).join('');
+  }
 }
 
 async function loadQueue() {
@@ -372,48 +412,53 @@ async function createCustomer() {
 }
 
 async function openProfile(id) {
-  const res = await fetch(`/api/customers/${id}`);
-  currentCustomer = await res.json();
-  closeModal('searchModal');
-  
-  // Load order history
-  const histRes = await fetch(`/api/customer/${id}/history`);
-  const history = histRes.ok ? await histRes.json() : [];
-  
-  const p = currentCustomer;
-  const historyHtml = history.length ? history.map(o => `
-    <div class="room-card" style="margin:6px 0;padding:10px">
-      <strong>${new Date(o.created_at).toLocaleDateString()}</strong> • £${o.total.toFixed(2)}<br>
-      <small>${o.items}</small><br>
-      <small style="color:var(--muted)">${o.payment_method}${o.discount ? ` • ${o.discount}% off` : ''}</small>
-    </div>
-  `).join('') : '<p style="color:var(--muted)">No previous orders</p>';
-  
-  document.getElementById('profileContent').innerHTML = `
-    <div style="display:flex;gap:16px;align-items:center;margin-bottom:16px">
-      <div style="width:80px;height:80px;border-radius:50%;background:#1a3a5c;display:flex;align-items:center;justify-content:center;font-size:2rem">👤</div>
-      <div>
-        <h2>${p.name}</h2>
-        <p>${p.phone} • ${p.email || ''}</p>
-        <span class="loyalty">⭐ ${p.loyalty} Loyalty Points</span>
+  try {
+    const res = await fetch(`/api/customers/${id}`);
+    if (!res.ok) throw new Error("Customer not found");
+    currentCustomer = await res.json();
+    closeModal('searchModal');
+    
+    const histRes = await fetch(`/api/customer/${id}/history`);
+    const history = histRes.ok ? await histRes.json() : [];
+    
+    const p = currentCustomer;
+    const historyHtml = history.length ? history.map(o => `
+      <div class="room-card" style="margin:6px 0;padding:10px">
+        <strong>${new Date(o.created_at).toLocaleDateString()}</strong> • £${(o.total || 0).toFixed(2)}<br>
+        <small>${o.items || ''}</small><br>
+        <small style="color:var(--muted)">${o.payment_method || ''}${o.discount ? ` • ${o.discount}% off` : ''}</small>
       </div>
-    </div>
-    <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
-      <div class="room-card"><strong>Orders</strong><br>${p.orders}</div>
-      <div class="room-card"><strong>Visits</strong><br>${p.visits}</div>
-      <div class="room-card"><strong>Avg</strong><br>£${p.avg_spend.toFixed(2)}</div>
-    </div>
-    <div class="room-card"><strong>Remaining Minutes:</strong> ${p.remaining_minutes}</div>
+    `).join('') : '<p style="color:var(--muted)">No previous orders</p>';
     
-    <h3 style="margin:16px 0 8px">Order History</h3>
-    <div style="max-height:250px;overflow-y:auto">${historyHtml}</div>
-    
-    <div style="margin-top:16px">
-      <button class="btn" onclick="startOrder()">New Order / Wallet</button>
-      <button class="btn btn-outline" onclick="closeModal('profileModal')">Close</button>
-    </div>
-  `;
-  document.getElementById('profileModal').style.display = 'flex';
+    document.getElementById('profileContent').innerHTML = `
+      <div style="display:flex;gap:16px;align-items:center;margin-bottom:16px">
+        <div style="width:80px;height:80px;border-radius:50%;background:#1a3a5c;display:flex;align-items:center;justify-content:center;font-size:2rem">👤</div>
+        <div>
+          <h2>${p.name || 'Unknown'}</h2>
+          <p>${p.phone || ''} • ${p.email || ''}</p>
+          <span class="loyalty">⭐ ${p.loyalty || 0} Loyalty Points</span>
+        </div>
+      </div>
+      <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
+        <div class="room-card"><strong>Orders</strong><br>${p.orders || 0}</div>
+        <div class="room-card"><strong>Visits</strong><br>${p.visits || 0}</div>
+        <div class="room-card"><strong>Avg</strong><br>£${(p.avg_spend || 0).toFixed(2)}</div>
+      </div>
+      <div class="room-card"><strong>Remaining Minutes:</strong> ${p.remaining_minutes || 0}</div>
+      ${p.package_type ? `<div class="room-card" style="margin-top:8px;border-color:#f39c12"><strong>Package:</strong> Unlimited ${p.package_type}<br><small>Expires: ${p.package_expires || 'N/A'}</small></div>` : ''}
+      
+      <h3 style="margin:16px 0 8px">Order History</h3>
+      <div style="max-height:250px;overflow-y:auto">${historyHtml}</div>
+      
+      <div style="margin-top:16px">
+        <button class="btn" onclick="startOrder()">New Order / Wallet</button>
+        <button class="btn btn-outline" onclick="closeModal('profileModal')">Close</button>
+      </div>
+    `;
+    document.getElementById('profileModal').style.display = 'flex';
+  } catch (err) {
+    alert("Could not open customer: " + err.message);
+  }
 }
 
 function startOrder() {
@@ -506,7 +551,10 @@ async function assignFromQueue(queueId, name) {
   currentQueueId = queueId;
   document.getElementById('assignCustomerName').textContent = `Assigning: ${name}`;
   const res = await fetch("/api/rooms");
-  const rooms = await res.json();
+  let rooms = await res.json();
+  if (currentShop) {
+    rooms = rooms.filter(r => r.name.startsWith(currentShop));
+  }
   const available = rooms.filter(r => r.status === 'available');
   document.getElementById('availableRooms').innerHTML = available.map(r => `
     <div class="room-card status-available" onclick="assignRoom(${r.id})">

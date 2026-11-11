@@ -20,7 +20,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 STATIC_DIR = os.path.join(PROJECT_ROOT, "static")
 FRONTEND_DIR = os.path.join(PROJECT_ROOT, "frontend")
-DB_PATH = os.path.join(BASE_DIR, "glowboard.db")
+DB_PATH = os.environ.get("DATABASE_PATH", os.path.join(BASE_DIR, "glowboard.db"))
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -100,19 +100,19 @@ def init_db():
     
     conn.commit()
     
-    # Seed or update rooms to match real shop layout
+    # Seed or update rooms to match real shop layout (only if wrong)
     c.execute("SELECT COUNT(*) FROM rooms")
     room_count = c.fetchone()[0]
-    if room_count == 0 or room_count == 10:
+    if room_count != 12:
         c.execute("DELETE FROM rooms")
-        # Wyken: 3 stand-up (1-3), 3 lie-down (4-6)
+        # Wyken: Stand-up 1-3, Lie-down 4-6
         for i in range(1, 4):
             c.execute("INSERT INTO rooms (id, name, type, status) VALUES (?, ?, ?, ?)",
                      (i, f"Wyken Stand-up {i}", "Stand-up", "available"))
         for i in range(4, 7):
             c.execute("INSERT INTO rooms (id, name, type, status) VALUES (?, ?, ?, ?)",
                      (i, f"Wyken Lie-down {i}", "Lie-down", "available"))
-        # Earlsdon: 3 stand-up (7-9), 3 lie-down (10-12)
+        # Earlsdon: Stand-up 1-3, Lie-down 4-6
         for i in range(7, 10):
             c.execute("INSERT INTO rooms (id, name, type, status) VALUES (?, ?, ?, ?)",
                      (i, f"Earlsdon Stand-up {i-6}", "Stand-up", "available"))
@@ -120,25 +120,32 @@ def init_db():
             c.execute("INSERT INTO rooms (id, name, type, status) VALUES (?, ?, ?, ?)",
                      (i, f"Earlsdon Lie-down {i-6}", "Lie-down", "available"))
     
-    # Seed products if empty
-    c.execute("SELECT COUNT(*) FROM products")
-    if c.fetchone()[0] == 0:
-        products = [
-            ("3 MIN", 7.00, "session", "/static/images/standup.jpg"),
-            ("6 MIN", 8.00, "session", "/static/images/standup.jpg"),
-            ("9 MIN", 10.00, "session", "/static/images/liedown.jpg"),
-            ("12 MIN", 13.00, "session", "/static/images/liedown.jpg"),
-            ("15 MIN", 18.00, "session", "/static/images/liedown.jpg"),
-            ("30 MIN Pack", 30.00, "package", "/static/images/salon.jpg"),
-            ("60 MIN Pack", 39.00, "package", "/static/images/salon.jpg"),
-            ("100 MIN Pack", 56.00, "package", "/static/images/salon.jpg"),
-            ("120 MIN Pack", 61.00, "package", "/static/images/salon.jpg"),
-            ("Unlimited Weekly", 46.00, "package", "/static/images/salon.jpg"),
-            ("Unlimited Monthly", 79.00, "package", "/static/images/salon.jpg"),
-            ("Australian Gold Lotion", 12.50, "lotion", "/static/images/lotions.jpg"),
-            ("Tropical Tan Bronzer", 14.00, "lotion", "/static/images/lotions.jpg"),
-        ]
-        c.executemany("INSERT INTO products (name, price, category, image) VALUES (?, ?, ?, ?)", products)
+    # Always refresh products to match current price list (removes lotions)
+    c.execute("DELETE FROM products")
+    products = [
+        ("3 MIN", 7.00, "session", "/static/images/standup.jpg"),
+        ("6 MIN", 8.00, "session", "/static/images/standup.jpg"),
+        ("9 MIN", 10.00, "session", "/static/images/liedown.jpg"),
+        ("12 MIN", 13.00, "session", "/static/images/liedown.jpg"),
+        ("15 MIN", 18.00, "session", "/static/images/liedown.jpg"),
+        ("30 MIN Pack", 30.00, "package", "/static/images/salon.jpg"),
+        ("60 MIN Pack", 39.00, "package", "/static/images/salon.jpg"),
+        ("100 MIN Pack", 56.00, "package", "/static/images/salon.jpg"),
+        ("120 MIN Pack", 61.00, "package", "/static/images/salon.jpg"),
+        ("Unlimited Weekly", 46.00, "unlimited", "/static/images/salon.jpg"),
+        ("Unlimited Monthly", 79.00, "unlimited", "/static/images/salon.jpg"),
+    ]
+    c.executemany("INSERT INTO products (name, price, category, image) VALUES (?, ?, ?, ?)", products)
+    
+    # Add package columns if missing
+    try:
+        c.execute("ALTER TABLE customers ADD COLUMN package_type TEXT")
+    except:
+        pass
+    try:
+        c.execute("ALTER TABLE customers ADD COLUMN package_expires TEXT")
+    except:
+        pass
     
     # Seed sample customers if empty
     c.execute("SELECT COUNT(*) FROM customers")
@@ -272,6 +279,7 @@ def create_order(order: OrderCreate):
                  VALUES (?, ?, ?, ?, ?)""",
               (order.customer_id, customer["name"], items_str, order.total, order.payment_method))
     
+    # Update customer stats
     c.execute("""UPDATE customers 
                  SET orders = orders + 1, 
                      visits = visits + 1,
@@ -279,6 +287,29 @@ def create_order(order: OrderCreate):
                      avg_spend = (avg_spend * (orders - 1) + ?) / orders
                  WHERE id = ?""",
               (int(order.total), order.total, order.customer_id))
+    
+    # Handle minutes packs and unlimited packages
+    for item in order.items:
+        name = item.name.lower()
+        if "min pack" in name:
+            mins = 0
+            for m in [120, 100, 60, 30]:
+                if str(m) in name:
+                    mins = m
+                    break
+            if mins > 0:
+                c.execute("UPDATE customers SET remaining_minutes = remaining_minutes + ? WHERE id = ?",
+                          (mins * item.qty, order.customer_id))
+        elif "unlimited weekly" in name:
+            from datetime import datetime, timedelta
+            expires = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+            c.execute("UPDATE customers SET package_type = 'weekly', package_expires = ? WHERE id = ?",
+                      (expires, order.customer_id))
+        elif "unlimited monthly" in name:
+            from datetime import datetime, timedelta
+            expires = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
+            c.execute("UPDATE customers SET package_type = 'monthly', package_expires = ? WHERE id = ?",
+                      (expires, order.customer_id))
     
     conn.commit()
     conn.close()
@@ -611,6 +642,19 @@ def send_sms_campaign(campaign: CampaignSMS):
             errors.append(f"{cust['phone']}: {str(e)}")
     
     return {"sent": sent, "failed": failed, "errors": errors[:5]}
+
+@app.get("/api/export/customers")
+def export_customers():
+    """Download all customers as Excel for backup"""
+    conn = get_db()
+    df = pd.read_sql_query("SELECT name, phone, email, remaining_minutes, package_type, package_expires, visits, loyalty FROM customers", conn)
+    conn.close()
+    output = io.BytesIO()
+    df.to_excel(output, index=False)
+    output.seek(0)
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": "attachment; filename=customers_backup.xlsx"})
 
 # Serve frontend
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
