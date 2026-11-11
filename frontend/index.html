@@ -967,34 +967,44 @@ function showDailyReport() {
 
 async function loadReport() {
   const date = document.getElementById('reportDate').value;
-  const res = await fetch(`/api/report/daily?date=${date}`);
-  const data = await res.json();
-  
-  let html = `<h3>${data.date}</h3>`;
-  for (const [shop, info] of Object.entries(data.shops)) {
-    html += `<div class="room-card" style="margin:12px 0">
-      <strong>📍 ${shop}</strong><br>
-      Sessions: ${info.sessions.length} • Minutes used today: ${info.minutes}<br>
-      Total minutes left (customers at this shop): ${info.minutes_left || 0}<br>
-      <strong style="margin-top:8px;display:block">Money taken:</strong>
-      <div style="font-size:0.85rem;margin:6px 0">
-        ${Object.entries(info.breakdown || {}).map(([prod, amt]) => 
-          amt > 0 ? `<div>${prod}: £${amt.toFixed(2)}</div>` : ''
-        ).join('')}
-      </div>
-      <strong>Shop total: £${(info.money || 0).toFixed(2)}</strong><br>
-      <div style="max-height:150px;overflow-y:auto;margin-top:8px;font-size:0.85rem">
-        ${info.sessions.map(s => `${s.customer_name || 'Unknown'} — ${s.minutes} min (${s.room_name})`).join('<br>') || 'No sessions'}
-      </div>
+  const el = document.getElementById('reportContent');
+  el.innerHTML = '<p>Loading...</p>';
+  try {
+    const res = await fetch(`/api/report/daily?date=${date}`);
+    if (!res.ok) {
+      el.innerHTML = '<p style="color:#e74c3c">Could not load report. Try again after redeploying.</p>';
+      return;
+    }
+    const data = await res.json();
+    
+    let html = `<h3>${data.date}</h3>`;
+    for (const [shop, info] of Object.entries(data.shops || {})) {
+      html += `<div class="room-card" style="margin:12px 0">
+        <strong>📍 ${shop}</strong><br>
+        Sessions: ${(info.sessions || []).length} • Minutes used today: ${info.minutes || 0}<br>
+        Total minutes left (customers at this shop): ${info.minutes_left || 0}<br>
+        <strong style="margin-top:8px;display:block">Money taken:</strong>
+        <div style="font-size:0.85rem;margin:6px 0">
+          ${Object.entries(info.breakdown || {}).map(([prod, amt]) => 
+            amt > 0 ? `<div>${prod}: £${amt.toFixed(2)}</div>` : ''
+          ).join('') || '<div style="color:var(--muted)">No sales yet</div>'}
+        </div>
+        <strong>Shop total: £${(info.money || 0).toFixed(2)}</strong><br>
+        <div style="max-height:150px;overflow-y:auto;margin-top:8px;font-size:0.85rem">
+          ${(info.sessions || []).map(s => `${s.customer_name || 'Unknown'} — ${s.minutes} min (${s.room_name})`).join('<br>') || 'No sessions'}
+        </div>
+      </div>`;
+    }
+    html += `<div class="room-card" style="border-color:#2ecc71">
+      <strong>Combined Total</strong><br>
+      Minutes used: ${data.total_minutes || 0}<br>
+      Money taken: £${(data.total_money || 0).toFixed(2)} (${data.order_count || 0} orders)
     </div>`;
+    
+    el.innerHTML = html;
+  } catch (err) {
+    el.innerHTML = `<p style="color:#e74c3c">Error: ${err.message}</p>`;
   }
-  html += `<div class="room-card" style="border-color:#2ecc71">
-    <strong>Combined Total</strong><br>
-    Minutes used: ${data.total_minutes}<br>
-    Money taken: £${(data.total_money || 0).toFixed(2)} (${data.order_count} orders)
-  </div>`;
-  
-  document.getElementById('reportContent').innerHTML = html;
 }
 
 // Init

@@ -846,25 +846,50 @@ def daily_report(date: str = None):
         date = datetime.now().strftime("%Y-%m-%d")
     
     conn = get_db()
+    c = conn.cursor()
+    
+    # Ensure sessions table exists
+    c.execute('''CREATE TABLE IF NOT EXISTS sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_name TEXT,
+        room_name TEXT,
+        shop TEXT,
+        minutes INTEGER,
+        amount REAL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    conn.commit()
+    
     # Sessions for the day
-    sessions = conn.execute(
+    sessions = c.execute(
         "SELECT * FROM sessions WHERE date(created_at) = ? ORDER BY created_at",
         (date,)
     ).fetchall()
     
-    # Money from orders for the day, broken down by product and shop
-    orders = conn.execute(
-        "SELECT total, shop, items FROM orders WHERE date(created_at) = ?",
-        (date,)
-    ).fetchall()
-    # Total remaining minutes per shop (from customers registered at each shop)
+    # Money from orders for the day
+    try:
+        orders = c.execute(
+            "SELECT total, shop, items FROM orders WHERE date(created_at) = ?",
+            (date,)
+        ).fetchall()
+    except:
+        orders = c.execute(
+            "SELECT total, items FROM orders WHERE date(created_at) = ?",
+            (date,)
+        ).fetchall()
+        orders = [dict(o) | {"shop": None} for o in orders]
+    
+    # Total remaining minutes per shop
     minutes_left = {}
     for shop_name in ["Wyken", "Earlsdon"]:
-        row = conn.execute(
-            "SELECT COALESCE(SUM(remaining_minutes), 0) as total FROM customers WHERE shop = ?",
-            (shop_name,)
-        ).fetchone()
-        minutes_left[shop_name] = row["total"] if row else 0
+        try:
+            row = c.execute(
+                "SELECT COALESCE(SUM(remaining_minutes), 0) as total FROM customers WHERE shop = ?",
+                (shop_name,)
+            ).fetchone()
+            minutes_left[shop_name] = row["total"] if row else 0
+        except:
+            minutes_left[shop_name] = 0
     
     conn.close()
     
@@ -882,23 +907,24 @@ def daily_report(date: str = None):
     total_money = 0
     
     for o in orders:
-        amt = o["total"] or 0
+        o = dict(o)
+        amt = o.get("total") or 0
         total_money += amt
-        shop = o["shop"] if o["shop"] in shops else None
+        shop = o.get("shop") if o.get("shop") in shops else None
         if shop:
             shops[shop]["money"] += amt
-            # Find which product was sold from the items string
-            items = (o["items"] or "").lower()
+            items = (o.get("items") or "").lower()
             for p in products_list:
                 if p.lower() in items:
                     shops[shop]["breakdown"][p] += amt
                     break
     
     for s in sessions:
-        shop = s["shop"] if s["shop"] in shops else "Wyken"
-        shops[shop]["sessions"].append(dict(s))
-        shops[shop]["minutes"] += s["minutes"] or 0
-        total_minutes += s["minutes"] or 0
+        s = dict(s)
+        shop = s.get("shop") if s.get("shop") in shops else "Wyken"
+        shops[shop]["sessions"].append(s)
+        shops[shop]["minutes"] += s.get("minutes") or 0
+        total_minutes += s.get("minutes") or 0
     
     return {
         "date": date,
