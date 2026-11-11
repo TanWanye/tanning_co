@@ -210,10 +210,10 @@ input, select {
 <!-- Payment Modal -->
 <div class="modal" id="paymentModal">
   <div class="modal-content">
-    <h2>Choose Payment Mode</h2>
-    <button class="btn" style="width:100%;margin:8px 0" onclick="completePayment('Cash')">💵 Cash</button>
-    <button class="btn" style="width:100%;margin:8px 0" onclick="completePayment('Card')">💳 Card</button>
-    <button class="btn" style="width:100%;margin:8px 0" onclick="completePayment('Gift Card')">🎁 Gift Card</button>
+    <h2>How is this being paid?</h2>
+    <button class="btn" style="width:100%;margin:8px 0" onclick="completePayment('Till')">💳 Till (Cash / Card)</button>
+    <button class="btn" style="width:100%;margin:8px 0" id="usePackageBtn" onclick="completePayment('Package')">📦 Use Customer Package</button>
+    <p id="packageInfo" style="color:var(--muted);font-size:0.9rem;margin:8px 0"></p>
     <button class="btn btn-outline" onclick="closeModal('paymentModal')">Back</button>
   </div>
 </div>
@@ -452,7 +452,7 @@ async function openProfile(id) {
       <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
         <div class="room-card"><strong>Orders</strong><br>${p.orders || 0}</div>
         <div class="room-card"><strong>Visits</strong><br>${p.visits || 0}</div>
-        <div class="room-card"><strong>Remaining Minutes</strong><br>${p.remaining_minutes || 0}</div>
+        <div class="room-card"><strong>Remaining Minutes</strong><br><span style="font-size:1.4rem;color:#2ecc71">${p.remaining_minutes || 0}</span></div>
       </div>
       ${p.package_type ? `
         <div class="room-card" style="margin-bottom:12px;border-color:#f39c12">
@@ -552,6 +552,19 @@ function removeFromCart(id) {
 function goToPayment() {
   if (cart.length === 0) return alert('Add items first');
   closeModal('shopModal');
+  
+  // Show package option only if customer has minutes
+  const mins = currentCustomer?.remaining_minutes || 0;
+  const pkgBtn = document.getElementById('usePackageBtn');
+  const pkgInfo = document.getElementById('packageInfo');
+  if (mins > 0) {
+    pkgBtn.style.display = 'block';
+    pkgInfo.textContent = `Customer has ${mins} minutes remaining on package`;
+  } else {
+    pkgBtn.style.display = 'none';
+    pkgInfo.textContent = 'No package minutes available — pay at till';
+  }
+  
   document.getElementById('paymentModal').style.display = 'flex';
 }
 

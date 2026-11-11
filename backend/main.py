@@ -303,12 +303,20 @@ def create_order(order: OrderCreate):
         elif "unlimited weekly" in name:
             from datetime import datetime, timedelta
             expires = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
-            c.execute("UPDATE customers SET package_type = 'weekly', package_expires = ? WHERE id = ?",
+            # 15 min max per day × 7 days
+            c.execute("""UPDATE customers 
+                         SET package_type = 'weekly', package_expires = ?, 
+                             remaining_minutes = remaining_minutes + 105 
+                         WHERE id = ?""",
                       (expires, order.customer_id))
         elif "unlimited monthly" in name:
             from datetime import datetime, timedelta
             expires = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
-            c.execute("UPDATE customers SET package_type = 'monthly', package_expires = ? WHERE id = ?",
+            # 15 min max per day × 30 days
+            c.execute("""UPDATE customers 
+                         SET package_type = 'monthly', package_expires = ?, 
+                             remaining_minutes = remaining_minutes + 450 
+                         WHERE id = ?""",
                       (expires, order.customer_id))
     
     conn.commit()
