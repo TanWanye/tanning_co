@@ -177,8 +177,8 @@ input, select {
     <h2>Edit Customer</h2>
     <input id="editName" placeholder="Full Name">
     <input id="editPhone" placeholder="Phone Number">
-    <input id="editEmail" placeholder="Email (optional)">
-    <input id="editPostcode" placeholder="Postcode (optional)">
+    <input id="editEmail" placeholder="Email">
+    <input id="editPostcode" placeholder="Postcode">
     <select id="editShop" style="width:100%;padding:10px;margin:8px 0;border-radius:6px;border:none">
       <option value="">No shop</option>
       <option value="Wyken">Wyken</option>
@@ -195,8 +195,8 @@ input, select {
     <h2>Create New Customer</h2>
     <input id="newName" placeholder="Full Name">
     <input id="newPhone" placeholder="Phone Number">
-    <input id="newEmail" placeholder="Email (optional)">
-    <input id="newPostcode" placeholder="Postcode (optional)">
+    <input id="newEmail" placeholder="Email">
+    <input id="newPostcode" placeholder="Postcode">
     <button class="btn" onclick="createCustomer()">Create</button>
     <button class="btn btn-outline" onclick="closeModal('newCustomerModal')">Cancel</button>
   </div>
@@ -495,6 +495,7 @@ async function openProfile(id) {
         <div style="width:80px;height:80px;border-radius:50%;background:#1a3a5c;display:flex;align-items:center;justify-content:center;font-size:2rem">👤</div>
         <div>
           <h2>${p.name || 'Unknown'}</h2>
+          <p style="color:#f39c12;font-weight:bold">Customer #${p.customer_number || p.id}</p>
           <p>${p.phone || ''} • ${p.email || ''}</p>
           ${p.postcode ? `<p>Postcode: ${p.postcode}</p>` : ''}
         </div>

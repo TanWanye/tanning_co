@@ -275,8 +275,17 @@ def create_customer(customer: CustomerCreate):
             c.execute("ALTER TABLE customers ADD COLUMN shop TEXT")
         except:
             pass
-        c.execute("INSERT INTO customers (name, phone, email, postcode, shop) VALUES (?, ?, ?, ?, ?)",
-                  (customer.name, customer.phone or "", customer.email or "", customer.postcode or "", customer.shop or ""))
+        try:
+            c.execute("ALTER TABLE customers ADD COLUMN customer_number INTEGER")
+        except:
+            pass
+        
+        # Get next sequential number
+        row = c.execute("SELECT COALESCE(MAX(customer_number), 0) + 1 as next_num FROM customers").fetchone()
+        next_num = row["next_num"] if row else 1
+        
+        c.execute("INSERT INTO customers (name, phone, email, postcode, shop, customer_number) VALUES (?, ?, ?, ?, ?, ?)",
+                  (customer.name, customer.phone or "", customer.email or "", customer.postcode or "", customer.shop or "", next_num))
         conn.commit()
         new_id = c.lastrowid
         conn.close()
