@@ -297,6 +297,21 @@ input, select {
   </div>
 </div>
 
+<!-- Use Minutes Modal -->
+<div class="modal" id="useMinutesModal">
+  <div class="modal-content">
+    <h2>Use Minutes</h2>
+    <p id="useMinutesInfo"></p>
+    <label>How many minutes?</label>
+    <div id="minuteOptions" style="margin:12px 0"></div>
+    <div id="bedOptions" style="display:none;margin-top:16px">
+      <h3>Select Bed</h3>
+      <div class="grid" id="availableBedsForMinutes"></div>
+    </div>
+    <button class="btn btn-outline" onclick="closeModal('useMinutesModal')">Cancel</button>
+  </div>
+</div>
+
 <script>
 const API = "";  // same origin
 
@@ -467,7 +482,8 @@ async function openProfile(id) {
       <div style="max-height:250px;overflow-y:auto">${historyHtml}</div>
       
       <div style="margin-top:16px">
-        <button class="btn" onclick="startOrder()">New Order / Wallet</button>
+        <button class="btn" onclick="startOrder()">Buy Package / Minutes</button>
+        ${(p.remaining_minutes || 0) > 0 ? `<button class="btn" onclick="useMinutesFlow()">Use Minutes on Bed</button>` : ''}
         <button class="btn btn-outline" onclick="closeModal('profileModal')">Close</button>
       </div>
     `;
@@ -859,6 +875,55 @@ async function addToWaitlist() {
 async function removeFromWaitlist(id) {
   await fetch(`/api/waitlist/${id}`, {method: 'DELETE'});
   showWaitlist(currentWaitRoomId, document.getElementById('waitlistTitle').textContent.replace('Waiting List — ', ''));
+}
+
+let selectedMinutes = 0;
+
+function useMinutesFlow() {
+  if (!currentCustomer) return;
+  const mins = currentCustomer.remaining_minutes || 0;
+  document.getElementById('useMinutesInfo').textContent = `${currentCustomer.name} has ${mins} minutes remaining`;
+  const options = [3, 6, 9, 12, 15].filter(m => m <= mins);
+  document.getElementById('minuteOptions').innerHTML = options.map(m => 
+    `<button class="btn btn-outline" style="margin:4px" onclick="selectMinutes(${m})">${m} min</button>`
+  ).join('') || '<p>Not enough minutes for a session</p>';
+  document.getElementById('bedOptions').style.display = 'none';
+  document.getElementById('useMinutesModal').style.display = 'flex';
+}
+
+async function selectMinutes(mins) {
+  selectedMinutes = mins;
+  document.getElementById('bedOptions').style.display = 'block';
+  const res = await fetch("/api/rooms");
+  let rooms = await res.json();
+  if (currentShop) rooms = rooms.filter(r => r.name.startsWith(currentShop));
+  const available = rooms.filter(r => r.status === 'available');
+  document.getElementById('availableBedsForMinutes').innerHTML = available.map(r => `
+    <div class="room-card status-available" onclick="assignWithMinutes(${r.id})">
+      <strong>${r.name}</strong><br>${r.type}
+    </div>
+  `).join('') || '<p>No available beds</p>';
+}
+
+async function assignWithMinutes(roomId) {
+  const res = await fetch('/api/use-minutes', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      customer_id: currentCustomer.id,
+      minutes: selectedMinutes,
+      room_id: roomId
+    })
+  });
+  if (res.ok) {
+    closeModal('useMinutesModal');
+    closeModal('profileModal');
+    await loadRooms();
+    alert(`${selectedMinutes} minutes assigned to bed`);
+  } else {
+    const err = await res.json();
+    alert(err.detail || 'Could not assign');
+  }
 }
 
 // Init

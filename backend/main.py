@@ -123,17 +123,17 @@ def init_db():
     # Always refresh products to match current price list (removes lotions)
     c.execute("DELETE FROM products")
     products = [
-        ("3 MIN", 7.00, "session", "/static/images/standup.jpg"),
-        ("6 MIN", 8.00, "session", "/static/images/standup.jpg"),
-        ("9 MIN", 10.00, "session", "/static/images/liedown.jpg"),
-        ("12 MIN", 13.00, "session", "/static/images/liedown.jpg"),
-        ("15 MIN", 18.00, "session", "/static/images/liedown.jpg"),
-        ("30 MIN Pack", 30.00, "package", "/static/images/salon.jpg"),
-        ("60 MIN Pack", 39.00, "package", "/static/images/salon.jpg"),
-        ("100 MIN Pack", 56.00, "package", "/static/images/salon.jpg"),
-        ("120 MIN Pack", 61.00, "package", "/static/images/salon.jpg"),
-        ("Unlimited Weekly", 46.00, "unlimited", "/static/images/salon.jpg"),
-        ("Unlimited Monthly", 79.00, "unlimited", "/static/images/salon.jpg"),
+        ("3 MIN", 7.00, "session", "/static/images/minutes.jpg"),
+        ("6 MIN", 8.00, "session", "/static/images/minutes.jpg"),
+        ("9 MIN", 10.00, "session", "/static/images/minutes.jpg"),
+        ("12 MIN", 13.00, "session", "/static/images/minutes.jpg"),
+        ("15 MIN", 18.00, "session", "/static/images/minutes.jpg"),
+        ("30 MIN Pack", 30.00, "package", "/static/images/minutes.jpg"),
+        ("60 MIN Pack", 39.00, "package", "/static/images/minutes.jpg"),
+        ("100 MIN Pack", 56.00, "package", "/static/images/minutes.jpg"),
+        ("120 MIN Pack", 61.00, "package", "/static/images/minutes.jpg"),
+        ("Unlimited Weekly", 46.00, "unlimited", "/static/images/weekly.jpg"),
+        ("Unlimited Monthly", 79.00, "unlimited", "/static/images/monthly.jpg"),
     ]
     c.executemany("INSERT INTO products (name, price, category, image) VALUES (?, ?, ?, ?)", products)
     
@@ -274,10 +274,15 @@ def create_order(order: OrderCreate):
               (order.customer_id, order.total, order.discount, order.payment_method, items_str))
     order_id = c.lastrowid
     
-    customer = c.execute("SELECT name FROM customers WHERE id = ?", (order.customer_id,)).fetchone()
-    c.execute("""INSERT INTO queue (customer_id, customer_name, items, total, payment_method)
-                 VALUES (?, ?, ?, ?, ?)""",
-              (order.customer_id, customer["name"], items_str, order.total, order.payment_method))
+    # Only add to queue if it's a session (not a pure package purchase)
+    is_package_only = all(
+        "pack" in i.name.lower() or "unlimited" in i.name.lower() 
+        for i in order.items
+    )
+    if not is_package_only:
+        c.execute("""INSERT INTO queue (customer_id, customer_name, items, total, payment_method)
+                     VALUES (?, ?, ?, ?, ?)""",
+                  (order.customer_id, customer["name"], items_str, order.total, order.payment_method))
     
     # Update customer stats
     c.execute("""UPDATE customers 
@@ -722,6 +727,38 @@ def remove_from_waitlist(wait_id: int):
     conn.commit()
     conn.close()
     return {"message": "Removed from waitlist"}
+
+@app.post("/api/use-minutes")
+def use_minutes(data: dict):
+    """Deduct minutes from customer and assign to a bed"""
+    conn = get_db()
+    c = conn.cursor()
+    customer_id = data.get("customer_id")
+    minutes = int(data.get("minutes", 0))
+    room_id = data.get("room_id")
+    
+    customer = c.execute("SELECT * FROM customers WHERE id = ?", (customer_id,)).fetchone()
+    if not customer:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Customer not found")
+    if (customer["remaining_minutes"] or 0) < minutes:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Not enough minutes")
+    
+    room = c.execute("SELECT * FROM rooms WHERE id = ?", (room_id,)).fetchone()
+    if not room or room["status"] != "available":
+        conn.close()
+        raise HTTPException(status_code=400, detail="Bed not available")
+    
+    c.execute("UPDATE customers SET remaining_minutes = remaining_minutes - ? WHERE id = ?",
+              (minutes, customer_id))
+    c.execute("""UPDATE rooms 
+                 SET status = 'occupied', customer_name = ?, remaining_minutes = ?, started_at = CURRENT_TIMESTAMP
+                 WHERE id = ?""",
+              (customer["name"], minutes, room_id))
+    conn.commit()
+    conn.close()
+    return {"message": "Bed assigned", "minutes_used": minutes}
 
 # Serve frontend
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
