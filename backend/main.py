@@ -100,14 +100,25 @@ def init_db():
     
     conn.commit()
     
-    # Seed rooms if empty
+    # Seed or update rooms to match real shop layout
     c.execute("SELECT COUNT(*) FROM rooms")
-    if c.fetchone()[0] == 0:
-        for i in range(1, 11):
-            rtype = "Stand-up" if i % 2 == 0 else "Lie-down"
-            status = "cleaning" if i % 4 == 0 else "available"
+    room_count = c.fetchone()[0]
+    if room_count == 0 or room_count == 10:
+        c.execute("DELETE FROM rooms")
+        # Wyken: 3 stand-up (1-3), 3 lie-down (4-6)
+        for i in range(1, 4):
             c.execute("INSERT INTO rooms (id, name, type, status) VALUES (?, ?, ?, ?)",
-                     (i, f"ROOM {i}", rtype, status))
+                     (i, f"Wyken Stand-up {i}", "Stand-up", "available"))
+        for i in range(4, 7):
+            c.execute("INSERT INTO rooms (id, name, type, status) VALUES (?, ?, ?, ?)",
+                     (i, f"Wyken Lie-down {i}", "Lie-down", "available"))
+        # Earlsdon: 3 stand-up (7-9), 3 lie-down (10-12)
+        for i in range(7, 10):
+            c.execute("INSERT INTO rooms (id, name, type, status) VALUES (?, ?, ?, ?)",
+                     (i, f"Earlsdon Stand-up {i-6}", "Stand-up", "available"))
+        for i in range(10, 13):
+            c.execute("INSERT INTO rooms (id, name, type, status) VALUES (?, ?, ?, ?)",
+                     (i, f"Earlsdon Lie-down {i-6}", "Lie-down", "available"))
     
     # Seed products if empty
     c.execute("SELECT COUNT(*) FROM products")
