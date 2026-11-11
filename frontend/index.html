@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Tanning Co. Coventry | Salon Management</title>
+<style>
+:root {
+  --bg: #0f0c0a;
+  --card: #1a1512;
+  --accent: #f4a261;
+  --accent2: #e76f51;
+  --green: #2ecc71;
+  --red: #e74c3c;
+  --orange: #f4a261;
+  --gold: #ffd166;
+  --text: #f5f5f5;
+  --muted: #b8a99a;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+header {
+  background: linear-gradient(90deg, #0d2137, #123456);
+  padding: 12px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #1e3a5f;
+}
+.logo { font-size: 1.4rem; font-weight: 700; color: var(--gold); }
+.staff { display: flex; gap: 8px; }
+.staff span { background: #2d1f16; padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; }
+.container { display: flex; height: calc(100vh - 60px); }
+.sidebar {
+  width: 280px;
+  background: #16110e;
+  padding: 16px;
+  overflow-y: auto;
+  border-right: 1px solid #3d2b20;
+}
+.main { flex: 1; padding: 16px; overflow-y: auto; }
+.room-card, .product-card, .customer-card {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px solid #3d2b20;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.room-card:hover, .product-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+.status-available { border-left: 4px solid var(--green); }
+.status-occupied { border-left: 4px solid var(--orange); }
+.status-cleaning { border-left: 4px solid var(--red); }
+.btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  margin: 4px;
+}
+.btn:hover { background: var(--accent2); }
+.btn-green { background: var(--green); }
+.btn-red { background: var(--red); }
+.btn-outline { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+.modal {
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.7);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+.modal-content {
+  background: var(--card);
+  padding: 24px;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.cart-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1e3a5f; }
+input, select {
+  width: 100%;
+  padding: 10px;
+  margin: 8px 0;
+  border-radius: 8px;
+  border: 1px solid #3d2b20;
+  background: #0f0c0a;
+  color: white;
+}
+.loyalty { color: #ffd700; }
+.queue-item { background: #1a3a5c; padding: 10px; margin: 6px 0; border-radius: 8px; }
+.persist-badge { background: #2ecc71; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">☀️ The Tanning Co. Coventry <small style="font-size:0.7rem;opacity:0.6">Salon System</small> <span class="persist-badge">PERSISTENT</span></div>
+  <div class="staff">
+    <span>Lucie Stolbova</span>
+    <span>Jennifer lizonova</span>
+    <span>charlotte simpson</span>
+  </div>
+  <div id="clock"></div>
+</header>
+
+<div class="container">
+  <div class="sidebar">
+    <h3 style="margin-bottom:12px">Rooms</h3>
+    <div id="roomsList"></div>
+    <hr style="margin:16px 0;border-color:#1e3a5f">
+    <h3>Queue</h3>
+    <div id="queueList"></div>
+    <button class="btn" onclick="showSearch()" style="width:100%;margin-top:12px">+ New Customer / Search</button>
+    <button class="btn btn-outline" onclick="showNewCustomer()" style="width:100%;margin-top:4px">Create New Customer</button>
+    <button class="btn btn-outline" onclick="showImport()" style="width:100%;margin-top:4px">📥 Import Excel</button>
+    <button class="btn btn-outline" onclick="showCampaign()" style="width:100%;margin-top:4px">📧 Email Campaign</button>
+    <button class="btn btn-outline" onclick="showEmailSettings()" style="width:100%;margin-top:4px">⚙️ Email Settings</button>
+    <button class="btn btn-outline" onclick="showSMSCampaign()" style="width:100%;margin-top:4px">📱 SMS Campaign</button>
+    <button class="btn btn-outline" onclick="showSMSSettings()" style="width:100%;margin-top:4px">📲 SMS Settings</button>
+    <button class="btn btn-outline" onclick="window.open('/customer', '_blank')" style="width:100%;margin-top:4px">👤 Customer App Link</button>
+  </div>
+  <div class="main" id="mainContent">
+    <h2>Main Board — The Tanning Co. Coventry</h2>
+    <p style="color:var(--muted);margin-bottom:16px">Two sites • All data saved permanently</p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div class="room-card">
+        <strong>📍 Wyken</strong><br>
+        50 Torcross Ave, CV2 3NQ<br>
+        📞 024 7665 9966<br>
+        <small style="color:var(--muted)">Mon–Sat 9:00–21:00<br>Sun 10:00–15:00</small>
+      </div>
+      <div class="room-card">
+        <strong>📍 Earlsdon</strong><br>
+        116 Albany Rd, CV5 6NG<br>
+        📞 024 7667 4922<br>
+        <small style="color:var(--muted)">Mon–Fri 9:00–21:00<br>Sat 9:00–19:00 • Sun 10:00–15:00</small>
+      </div>
+    </div>
+
+    <div id="dashboardInfo">Search a customer or assign from the queue to get started.</div>
+  </div>
+</div>
+
+<!-- Search Modal -->
+<div class="modal" id="searchModal">
+  <div class="modal-content">
+    <h2>Find Customer</h2>
+    <input id="searchInput" placeholder="Phone (e.g. 079) or Name" oninput="searchCustomers()">
+    <div id="searchResults" style="margin-top:12px"></div>
+    <button class="btn btn-outline" onclick="closeModal('searchModal')">Close</button>
+  </div>
+</div>
+
+<!-- New Customer Modal -->
+<div class="modal" id="newCustomerModal">
+  <div class="modal-content">
+    <h2>Create New Customer</h2>
+    <input id="newName" placeholder="Full Name">
+    <input id="newPhone" placeholder="Phone Number">
+    <input id="newEmail" placeholder="Email (optional)">
+    <button class="btn" onclick="createCustomer()">Create</button>
+    <button class="btn btn-outline" onclick="closeModal('newCustomerModal')">Cancel</button>
+  </div>
+</div>
+
+<!-- Customer Profile Modal -->
+<div class="modal" id="profileModal">
+  <div class="modal-content" id="profileContent"></div>
+</div>
+
+<!-- Shop Modal -->
+<div class="modal" id="shopModal">
+  <div class="modal-content">
+    <h2>New Order</h2>
+    <div class="grid" id="productsGrid"></div>
+    <h3 style="margin-top:20px">Basket</h3>
+    <div id="basket"></div>
+    <div style="margin:12px 0">
+      <label>Discount:</label>
+      <div id="discountBtns"></div>
+    </div>
+    <div style="text-align:right;font-size:1.2rem">Total: £<span id="total">0.00</span></div>
+    <button class="btn" onclick="goToPayment()">Next → Payment</button>
+    <button class="btn btn-outline" onclick="closeModal('shopModal')">Cancel</button>
+  </div>
+</div>
+
+<!-- Payment Modal -->
+<div class="modal" id="paymentModal">
+  <div class="modal-content">
+    <h2>Choose Payment Mode</h2>
+    <button class="btn" style="width:100%;margin:8px 0" onclick="completePayment('Cash')">💵 Cash</button>
+    <button class="btn" style="width:100%;margin:8px 0" onclick="completePayment('Card')">💳 Card</button>
+    <button class="btn" style="width:100%;margin:8px 0" onclick="completePayment('Gift Card')">🎁 Gift Card</button>
+    <button class="btn btn-outline" onclick="closeModal('paymentModal')">Back</button>
+  </div>
+</div>
+
+<!-- Assign Room Modal -->
+<div class="modal" id="assignModal">
+  <div class="modal-content">
+    <h2>Assign Room</h2>
+    <p id="assignCustomerName"></p>
+    <div class="grid" id="availableRooms"></div>
+    <button class="btn btn-outline" onclick="closeModal('assignModal')">Later</button>
+  </div>
+</div>
+
+<!-- Import Excel Modal -->
+<div class="modal" id="importModal">
+  <div class="modal-content">
+    <h2>Import Customers from Excel</h2>
+    <p style="color:var(--muted);margin-bottom:12px">Excel must have columns: <strong>Name</strong> and <strong>Phone</strong>. Optional: Email.</p>
+    <input type="file" id="excelFile" accept=".xlsx,.xls">
+    <button class="btn" onclick="importExcel()">Import</button>
+    <div id="importResult" style="margin-top:12px"></div>
+    <button class="btn btn-outline" onclick="closeModal('importModal')">Close</button>
+  </div>
+</div>
+
+<!-- Email Settings Modal -->
+<div class="modal" id="emailSettingsModal">
+  <div class="modal-content">
+    <h2>Email Settings (SMTP)</h2>
+    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:12px">Use Gmail, Outlook, or any SMTP provider. For Gmail, enable "App Passwords".</p>
+    <input id="smtpHost" placeholder="SMTP Host (e.g. smtp.gmail.com)">
+    <input id="smtpPort" placeholder="Port (587)" value="587">
+    <input id="smtpUser" placeholder="SMTP Username / Email">
+    <input id="smtpPass" type="password" placeholder="SMTP Password / App Password">
+    <input id="fromEmail" placeholder="From Email">
+    <input id="fromName" placeholder="From Name" value="The Tanning Co. Coventry">
+    <button class="btn" onclick="saveEmailSettings()">Save Settings</button>
+    <button class="btn btn-outline" onclick="closeModal('emailSettingsModal')">Close</button>
+  </div>
+</div>
+
+<!-- SMS Settings Modal -->
+<div class="modal" id="smsSettingsModal">
+  <div class="modal-content">
+    <h2>SMS Settings (Twilio)</h2>
+    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:12px">
+      Create a free account at <strong>twilio.com</strong>, get your Account SID, Auth Token, and a phone number.
+    </p>
+    <input id="twilioSid" placeholder="Account SID">
+    <input id="twilioToken" type="password" placeholder="Auth Token">
+    <input id="twilioFrom" placeholder="From Number (e.g. +447700900000)">
+    <button class="btn" onclick="saveSMSSettings()">Save Settings</button>
+    <button class="btn btn-outline" onclick="closeModal('smsSettingsModal')">Close</button>
+  </div>
+</div>
+
+<!-- SMS Campaign Modal -->
+<div class="modal" id="smsCampaignModal">
+  <div class="modal-content">
+    <h2>Send SMS Campaign</h2>
+    <p style="color:var(--muted);font-size:0.85rem;margin-bottom:8px">
+      Use {name} to personalize. Keep under 160 characters for 1 credit.
+    </p>
+    <textarea id="smsMessage" rows="5" placeholder="Hi {name}, special offer at The Tanning Co. Coventry! Book now." style="width:100%;padding:10px;margin:8px 0;border-radius:8px;border:1px solid #3d2b20;background:#0f0c0a;color:white;font-family:inherit"></textarea>
+    <div id="smsCharCount" style="color:var(--muted);font-size:0.8rem;text-align:right">0 / 160</div>
+    <button class="btn" onclick="sendSMSCampaign()">Send SMS</button>
+    <div id="smsResult" style="margin-top:12px"></div>
+    <button class="btn btn-outline" onclick="closeModal('smsCampaignModal')">Close</button>
+  </div>
+</div>
+
+<script>
+const API = "";  // same origin
+
+let currentCustomer = null;
+let cart = [];
+let discount = 0;
+let products = [];
+let currentQueueId = null;
+
+function updateClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+async function loadRooms() {
+  const res = await fetch("/api/rooms");
+  const rooms = await res.json();
+  const el = document.getElementById('roomsList');
+  el.innerHTML = rooms.map(r => `
+    <div class="room-card status-${r.status}" onclick="selectRoom(${r.id})">
+      <strong>${r.name}</strong> <small>(${r.type})</small><br>
+      <span style="color:${r.status==='available'?'#2ecc71':r.status==='occupied'?'#f39c12':'#e74c3c'}">${r.status.toUpperCase()}</span>
+      ${r.customer_name ? `<br><small>${r.customer_name} • ${r.remaining_minutes}m left</small>` : ''}
+      ${r.status === 'cleaning' ? `<br><button class="btn btn-green" style="padding:4px 8px;font-size:0.75rem;margin-top:4px" onclick="event.stopPropagation(); markClean(${r.id})">Mark Clean</button>` : ''}
+    </div>
+  `).join('');
+}
+
+async function loadQueue() {
+  const res = await fetch("/api/queue");
+  const queue = await res.json();
+  const el = document.getElementById('queueList');
+  el.innerHTML = queue.length ? queue.map(q => `
+    <div class="queue-item">
+      ${q.customer_name}<br>
+      <small>${q.items} • £${q.total.toFixed(2)}</small><br>
+      <button class="btn" style="padding:4px 8px;font-size:0.8rem" onclick="assignFromQueue(${q.id}, '${q.customer_name.replace(/'/g, "\\'")}')">Assign Room</button>
+      <button class="btn btn-red" style="padding:4px 8px;font-size:0.8rem" onclick="cancelQueue(${q.id})">Cancel</button>
+    </div>
+  `).join('') : '<p style="color:var(--muted)">No one in queue</p>';
+}
+
+async function loadProducts() {
+  const res = await fetch("/api/products");
+  products = await res.json();
+}
+
+function showSearch() {
+  document.getElementById('searchModal').style.display = 'flex';
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchResults').innerHTML = '';
+  document.getElementById('searchInput').focus();
+}
+
+function showNewCustomer() {
+  document.getElementById('newCustomerModal').style.display = 'flex';
+}
+
+async function searchCustomers() {
+  const q = document.getElementById('searchInput').value;
+  const res = await fetch(`/api/customers?q=${encodeURIComponent(q)}`);
+  const results = await res.json();
+  document.getElementById('searchResults').innerHTML = results.map(c => `
+    <div class="customer-card" onclick="openProfile(${c.id})">
+      <strong>${c.name}</strong><br>
+      <small>${c.phone} • ${c.visits} visits • ${c.loyalty} LP</small>
+    </div>
+  `).join('') || '<p>No customers found.</p>';
+}
+
+async function createCustomer() {
+  const name = document.getElementById('newName').value.trim();
+  const phone = document.getElementById('newPhone').value.trim();
+  const email = document.getElementById('newEmail').value.trim();
+  if (!name || !phone) return alert("Name and phone required");
+  
+  const res = await fetch("/api/customers", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({name, phone, email})
+  });
+  if (res.ok) {
+    const data = await res.json();
+    closeModal('newCustomerModal');
+    openProfile(data.id);
+  } else {
+    const err = await res.json();
+    alert(err.detail || "Error creating customer");
+  }
+}
+
+async function openProfile(id) {
+  const res = await fetch(`/api/customers/${id}`);
+  currentCustomer = await res.json();
+  closeModal('searchModal');
+  const p = currentCustomer;
+  document.getElementById('profileContent').innerHTML = `
+    <div style="display:flex;gap:16px;align-items:center;margin-bottom:16px">
+      <div style="width:80px;height:80px;border-radius:50%;background:#1a3a5c;display:flex;align-items:center;justify-content:center;font-size:2rem">👤</div>
+      <div>
+        <h2>${p.name}</h2>
+        <p>${p.phone} • ${p.email || ''}</p>
+        <span class="loyalty">⭐ ${p.loyalty} Loyalty Points</span>
+      </div>
+    </div>
+    <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
+      <div class="room-card"><strong>Orders</strong><br>${p.orders}</div>
+      <div class="room-card"><strong>Visits</strong><br>${p.visits}</div>
+      <div class="room-card"><strong>Avg</strong><br>£${p.avg_spend.toFixed(2)}</div>
+    </div>
+    <div class="room-card"><strong>Remaining Minutes:</strong> ${p.remaining_minutes}</div>
+    <div style="margin-top:16px">
+      <button class="btn" onclick="startOrder()">New Order / Wallet</button>
+      <button class="btn btn-outline" onclick="closeModal('profileModal')">Close</button>
+    </div>
+  `;
+  document.getElementById('profileModal').style.display = 'flex';
+}
+
+function startOrder() {
+  closeModal('profileModal');
+  cart = [];
+  discount = 0;
+  renderProducts();
+  renderBasket();
+  document.getElementById('shopModal').style.display = 'flex';
+}
+
+function renderProducts() {
+  document.getElementById('productsGrid').innerHTML = products.map(p => `
+    <div class="product-card" onclick="addToCart(${p.id})">
+      <img src="${p.image}" style="width:100%;height:100px;object-fit:cover;border-radius:8px" onerror="this.style.display='none'">
+      <strong>${p.name}</strong><br>
+      £${p.price.toFixed(2)}
+    </div>
+  `).join('');
+  document.getElementById('discountBtns').innerHTML = [5,10,15,20,25,30].map(d => 
+    `<button class="btn btn-outline" onclick="setDiscount(${d})">${d}%</button>`
+  ).join('');
+}
+
+function addToCart(id) {
+  const p = products.find(x => x.id === id);
+  const existing = cart.find(x => x.id === id);
+  if (existing) existing.qty++;
+  else cart.push({...p, qty:1});
+  renderBasket();
+}
+
+function setDiscount(d) {
+  discount = d;
+  renderBasket();
+}
+
+function renderBasket() {
+  const sub = cart.reduce((s,i) => s + i.price * i.qty, 0);
+  const discAmount = sub * (discount/100);
+  const total = sub - discAmount;
+  document.getElementById('basket').innerHTML = cart.map(i => `
+    <div class="cart-item">
+      ${i.qty}x ${i.name} 
+      <span>£${(i.price*i.qty).toFixed(2)} <button onclick="removeFromCart(${i.id})" style="background:none;border:none;color:#e74c3c;cursor:pointer">✕</button></span>
+    </div>
+  `).join('') || '<p>Empty basket</p>';
+  document.getElementById('total').textContent = total.toFixed(2);
+}
+
+function removeFromCart(id) {
+  cart = cart.filter(i => i.id !== id);
+  renderBasket();
+}
+
+function goToPayment() {
+  if (cart.length === 0) return alert('Add items first');
+  closeModal('shopModal');
+  document.getElementById('paymentModal').style.display = 'flex';
+}
+
+async function completePayment(method) {
+  const total = parseFloat(document.getElementById('total').textContent);
+  const payload = {
+    customer_id: currentCustomer.id,
+    items: cart.map(i => ({id: i.id, name: i.name, price: i.price, qty: i.qty})),
+    discount: discount,
+    payment_method: method,
+    total: total
+  };
+  
+  const res = await fetch("/api/orders", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload)
+  });
+  
+  if (res.ok) {
+    closeModal('paymentModal');
+    cart = [];
+    await loadQueue();
+    await loadRooms();
+    alert(`Payment of £${total.toFixed(2)} via ${method} successful! Customer added to queue.`);
+  } else {
+    alert("Error creating order");
+  }
+}
+
+async function assignFromQueue(queueId, name) {
+  currentQueueId = queueId;
+  document.getElementById('assignCustomerName').textContent = `Assigning: ${name}`;
+  const res = await fetch("/api/rooms");
+  const rooms = await res.json();
+  const available = rooms.filter(r => r.status === 'available');
+  document.getElementById('availableRooms').innerHTML = available.map(r => `
+    <div class="room-card status-available" onclick="assignRoom(${r.id})">
+      <strong>${r.name}</strong><br>${r.type}
+    </div>
+  `).join('') || '<p>No available rooms</p>';
+  document.getElementById('assignModal').style.display = 'flex';
+}
+
+async function assignRoom(roomId) {
+  const res = await fetch(`/api/queue/${currentQueueId}/assign`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({queue_id: currentQueueId, room_id: roomId})
+  });
+  if (res.ok) {
+    closeModal('assignModal');
+    await loadRooms();
+    await loadQueue();
+  } else {
+    const err = await res.json();
+    alert(err.detail || "Could not assign room");
+  }
+}
+
+async function cancelQueue(id) {
+  await fetch(`/api/queue/${id}`, {method: "DELETE"});
+  await loadQueue();
+}
+
+async function markClean(roomId) {
+  await fetch(`/api/rooms/${roomId}/clean`, {method: "POST"});
+  await loadRooms();
+}
+
+function selectRoom(id) {
+  alert("Room details (click Mark Clean when ready)");
+}
+
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+function showImport() {
+  document.getElementById('importModal').style.display = 'flex';
+  document.getElementById('importResult').innerHTML = '';
+}
+
+async function importExcel() {
+  const fileInput = document.getElementById('excelFile');
+  if (!fileInput.files.length) return alert('Please select an Excel file');
+  
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+  
+  document.getElementById('importResult').innerHTML = 'Importing...';
+  
+  const res = await fetch('/api/import/excel', {
+    method: 'POST',
+    body: formData
+  });
+  
+  const data = await res.json();
+  if (res.ok) {
+    document.getElementById('importResult').innerHTML = `
+      <div style="color:#2ecc71">
+        ✅ Imported: ${data.imported}<br>
+        Skipped (duplicates/invalid): ${data.skipped}<br>
+        Total rows: ${data.total_rows}
+      </div>`;
+    await loadRooms(); // refresh in case needed
+  } else {
+    document.getElementById('importResult').innerHTML = `<div style="color:#e74c3c">Error: ${data.detail}</div>`;
+  }
+}
+
+function showEmailSettings() {
+  document.getElementById('emailSettingsModal').style.display = 'flex';
+  loadEmailSettings();
+}
+
+async function loadEmailSettings() {
+  const res = await fetch('/api/email/settings');
+  if (res.ok) {
+    const s = await res.json();
+    if (s) {
+      document.getElementById('smtpHost').value = s.smtp_host || '';
+      document.getElementById('smtpPort').value = s.smtp_port || 587;
+      document.getElementById('smtpUser').value = s.smtp_user || '';
+      document.getElementById('fromEmail').value = s.from_email || '';
+      document.getElementById('fromName').value = s.from_name || 'The Tanning Co. Coventry';
+    }
+  }
+}
+
+async function saveEmailSettings() {
+  const payload = {
+    smtp_host: document.getElementById('smtpHost').value,
+    smtp_port: parseInt(document.getElementById('smtpPort').value) || 587,
+    smtp_user: document.getElementById('smtpUser').value,
+    smtp_password: document.getElementById('smtpPass').value,
+    from_email: document.getElementById('fromEmail').value,
+    from_name: document.getElementById('fromName').value || 'The Tanning Co. Coventry'
+  };
+  
+  const res = await fetch('/api/email/settings', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  
+  if (res.ok) {
+    alert('Email settings saved');
+    closeModal('emailSettingsModal');
+  } else {
+    alert('Failed to save settings');
+  }
+}
+
+function showCampaign() {
+  document.getElementById('campaignModal').style.display = 'flex';
+  document.getElementById('campaignResult').innerHTML = '';
+}
+
+async function sendCampaign() {
+  const subject = document.getElementById('campSubject').value.trim();
+  const body = document.getElementById('campBody').value.trim();
+  if (!subject || !body) return alert('Subject and body are required');
+  
+  document.getElementById('campaignResult').innerHTML = 'Sending...';
+  
+  const res = await fetch('/api/email/campaign', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({subject, body})
+  });
+  
+  const data = await res.json();
+  if (res.ok) {
+    document.getElementById('campaignResult').innerHTML = `
+      <div style="color:#2ecc71">
+        ✅ Sent: ${data.sent}<br>
+        Failed: ${data.failed}
+        ${data.errors && data.errors.length ? '<br>Errors: ' + data.errors.join('<br>') : ''}
+      </div>`;
+  } else {
+    document.getElementById('campaignResult').innerHTML = `<div style="color:#e74c3c">Error: ${data.detail}</div>`;
+  }
+}
+
+function showSMSSettings() {
+  document.getElementById('smsSettingsModal').style.display = 'flex';
+}
+
+async function saveSMSSettings() {
+  const payload = {
+    account_sid: document.getElementById('twilioSid').value.trim(),
+    auth_token: document.getElementById('twilioToken').value.trim(),
+    from_number: document.getElementById('twilioFrom').value.trim()
+  };
+  if (!payload.account_sid || !payload.auth_token || !payload.from_number) {
+    return alert('All fields required');
+  }
+  const res = await fetch('/api/sms/settings', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  if (res.ok) {
+    alert('SMS settings saved');
+    closeModal('smsSettingsModal');
+  } else {
+    alert('Failed to save');
+  }
+}
+
+function showSMSCampaign() {
+  document.getElementById('smsCampaignModal').style.display = 'flex';
+  document.getElementById('smsResult').innerHTML = '';
+  const ta = document.getElementById('smsMessage');
+  ta.oninput = () => {
+    document.getElementById('smsCharCount').textContent = ta.value.length + ' / 160';
+  };
+}
+
+async function sendSMSCampaign() {
+  const message = document.getElementById('smsMessage').value.trim();
+  if (!message) return alert('Enter a message');
+  if (message.length > 160) {
+    if (!confirm('Message is over 160 characters and may cost more than 1 credit. Continue?')) return;
+  }
+  
+  document.getElementById('smsResult').innerHTML = 'Sending...';
+  
+  const res = await fetch('/api/sms/campaign', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({message})
+  });
+  
+  const data = await res.json();
+  if (res.ok) {
+    document.getElementById('smsResult').innerHTML = `
+      <div style="color:#2ecc71">
+        ✅ Sent: ${data.sent}<br>
+        Failed: ${data.failed}
+        ${data.errors && data.errors.length ? '<br>' + data.errors.join('<br>') : ''}
+      </div>`;
+  } else {
+    document.getElementById('smsResult').innerHTML = `<div style="color:#e74c3c">Error: ${data.detail}</div>`;
+  }
+}
+
+// Init
+async function init() {
+  await loadProducts();
+  await loadRooms();
+  await loadQueue();
+  // Auto-refresh rooms & queue every 10 seconds
+  setInterval(() => { loadRooms(); loadQueue(); }, 10000);
+}
+init();
+
+// Click outside to close
+document.querySelectorAll('.modal').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.style.display = 'none'; });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a120c">
+<title>The Tanning Co. Coventry</title>
+<style>
+:root {
+  --bg: #0f0c0a;
+  --card: #1a1512;
+  --accent: #f4a261;
+  --gold: #ffd166;
+  --text: #f5f5f5;
+  --muted: #b8a99a;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 20px 16px 40px;
+}
+.header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.header h1 { color: var(--gold); font-size: 1.6rem; }
+.header p { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+.card {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 16px;
+  border: 1px solid #3d2b20;
+}
+.minutes-big {
+  font-size: 3.5rem;
+  font-weight: 700;
+  color: var(--gold);
+  text-align: center;
+  line-height: 1;
+}
+.minutes-label { text-align: center; color: var(--muted); margin-top: 4px; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+.stat { text-align: center; }
+.stat strong { display: block; font-size: 1.4rem; color: var(--accent); }
+.stat span { font-size: 0.8rem; color: var(--muted); }
+input {
+  width: 100%;
+  padding: 14px;
+  margin: 8px 0;
+  border-radius: 12px;
+  border: 1px solid #3d2b20;
+  background: #0f0c0a;
+  color: white;
+  font-size: 16px;
+}
+.btn {
+  width: 100%;
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: 8px;
+}
+.btn:active { opacity: 0.9; }
+.locations { font-size: 0.85rem; color: var(--muted); line-height: 1.6; }
+.history-item { padding: 10px 0; border-bottom: 1px solid #3d2b20; font-size: 0.9rem; }
+.hidden { display: none; }
+.logout { background: transparent; color: var(--muted); border: 1px solid #3d2b20; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>☀️ The Tanning Co.</h1>
+  <p>Coventry • Check your minutes</p>
+</div>
+
+<!-- Login -->
+<div id="loginScreen">
+  <div class="card">
+    <h2 style="margin-bottom:12px">Customer Login</h2>
+    <input id="phone" type="tel" placeholder="Your phone number" inputmode="numeric">
+    <input id="pin" type="password" placeholder="PIN (default 1234)" value="1234">
+    <button class="btn" onclick="login()">View My Account</button>
+  </div>
+  <div class="card locations">
+    <strong>Our Sites</strong><br>
+    📍 Wyken: 50 Torcross Ave • 024 7665 9966<br>
+    📍 Earlsdon: 116 Albany Rd • 024 7667 4922
+  </div>
+</div>
+
+<!-- Account -->
+<div id="accountScreen" class="hidden">
+  <div class="card">
+    <div style="text-align:center;margin-bottom:8px" id="customerName"></div>
+    <div class="minutes-big" id="minutes">0</div>
+    <div class="minutes-label">minutes remaining</div>
+    <div class="stats">
+      <div class="stat"><strong id="visits">0</strong><span>Visits</span></div>
+      <div class="stat"><strong id="loyalty">0</strong><span>Loyalty Points</span></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3 style="margin-bottom:8px">Recent Activity</h3>
+    <div id="history"></div>
+  </div>
+  <button class="btn logout" onclick="logout()">Log Out</button>
+</div>
+
+<script>
+let currentCustomer = null;
+
+async function login() {
+  const phone = document.getElementById('phone').value.trim();
+  const pin = document.getElementById('pin').value.trim() || '1234';
+  if (!phone) return alert('Enter your phone number');
+
+  const res = await fetch('/api/customer/login', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({phone, pin})
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    return alert(err.detail || 'Login failed');
+  }
+
+  currentCustomer = await res.json();
+  showAccount();
+}
+
+function showAccount() {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('accountScreen').classList.remove('hidden');
+  document.getElementById('customerName').textContent = currentCustomer.name;
+  document.getElementById('minutes').textContent = currentCustomer.remaining_minutes;
+  document.getElementById('visits').textContent = currentCustomer.visits;
+  document.getElementById('loyalty').textContent = currentCustomer.loyalty;
+  loadHistory();
+}
+
+async function loadHistory() {
+  const res = await fetch(`/api/customer/${currentCustomer.id}/history`);
+  const orders = await res.json();
+  const el = document.getElementById('history');
+  if (!orders.length) {
+    el.innerHTML = '<p style="color:var(--muted)">No recent activity</p>';
+    return;
+  }
+  el.innerHTML = orders.map(o => `
+    <div class="history-item">
+      <strong>${o.items || 'Session'}</strong><br>
+      <span style="color:var(--muted)">${new Date(o.created_at).toLocaleDateString()} • £${o.total.toFixed(2)}</span>
+    </div>
+  `).join('');
+}
+
+function logout() {
+  currentCustomer = null;
+  document.getElementById('accountScreen').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('phone').value = '';
+}
+
+// Auto-fill phone if saved
+const saved = localStorage.getItem('ttc_phone');
+if (saved) document.getElementById('phone').value = saved;
+
+document.getElementById('phone').addEventListener('change', e => {
+  localStorage.setItem('ttc_phone', e.target.value);
+});
+</script>
+</body>
+</html>
