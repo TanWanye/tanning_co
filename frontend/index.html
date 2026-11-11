@@ -286,6 +286,17 @@ input, select {
   </div>
 </div>
 
+<!-- Waitlist Modal -->
+<div class="modal" id="waitlistModal">
+  <div class="modal-content">
+    <h2 id="waitlistTitle">Waiting List</h2>
+    <div id="waitlistContent"></div>
+    <input id="waitlistCustomer" placeholder="Customer name to add">
+    <button class="btn" onclick="addToWaitlist()">Add to Waitlist</button>
+    <button class="btn btn-outline" onclick="closeModal('waitlistModal')">Close</button>
+  </div>
+</div>
+
 <script>
 const API = "";  // same origin
 
@@ -330,8 +341,8 @@ async function loadRooms() {
       <strong>${r.name}</strong> <small>(${r.type})</small><br>
       <span style="color:${r.status==='available'?'#2ecc71':r.status==='occupied'?'#f39c12':'#e74c3c'}">${r.status.toUpperCase()}</span>
       ${r.customer_name ? `<br><small>${r.customer_name} • ${r.remaining_minutes}m left</small>` : ''}
-      ${r.status === 'cleaning' ? `<br><button class="btn btn-green" style="padding:4px 8px;font-size:0.75rem;margin-top:4px" onclick="event.stopPropagation(); markClean(${r.id})">Mark Clean</button>` : ''}
       ${r.status === 'occupied' ? `<br><button class="btn" style="padding:4px 8px;font-size:0.75rem;margin-top:4px" onclick="event.stopPropagation(); finishSession(${r.id})">Finish Session</button>` : ''}
+      ${r.status !== 'available' ? `<br><button class="btn btn-outline" style="padding:4px 8px;font-size:0.75rem;margin-top:4px" onclick="event.stopPropagation(); showWaitlist(${r.id}, '${r.name.replace(/'/g, "\\'")}')">Waiting List</button>` : ''}
     </div>
   `).join('');
   
@@ -436,16 +447,21 @@ async function openProfile(id) {
         <div>
           <h2>${p.name || 'Unknown'}</h2>
           <p>${p.phone || ''} • ${p.email || ''}</p>
-          <span class="loyalty">⭐ ${p.loyalty || 0} Loyalty Points</span>
         </div>
       </div>
       <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
         <div class="room-card"><strong>Orders</strong><br>${p.orders || 0}</div>
         <div class="room-card"><strong>Visits</strong><br>${p.visits || 0}</div>
-        <div class="room-card"><strong>Avg</strong><br>£${(p.avg_spend || 0).toFixed(2)}</div>
+        <div class="room-card"><strong>Remaining Minutes</strong><br>${p.remaining_minutes || 0}</div>
       </div>
-      <div class="room-card"><strong>Remaining Minutes:</strong> ${p.remaining_minutes || 0}</div>
-      ${p.package_type ? `<div class="room-card" style="margin-top:8px;border-color:#f39c12"><strong>Package:</strong> Unlimited ${p.package_type}<br><small>Expires: ${p.package_expires || 'N/A'}</small></div>` : ''}
+      ${p.package_type ? `
+        <div class="room-card" style="margin-bottom:12px;border-color:#f39c12">
+          <strong>Package:</strong> Unlimited ${p.package_type.charAt(0).toUpperCase() + p.package_type.slice(1)}<br>
+          <small>Expires: ${p.package_expires || 'N/A'} (${daysLeft(p.package_expires)} days left)</small>
+        </div>` : ''}
+      
+      <h3 style="margin:16px 0 8px">Recent Bed Usage</h3>
+      <div id="bedUsage" style="max-height:120px;overflow-y:auto;margin-bottom:12px">Loading...</div>
       
       <h3 style="margin:16px 0 8px">Order History</h3>
       <div style="max-height:250px;overflow-y:auto">${historyHtml}</div>
@@ -456,9 +472,28 @@ async function openProfile(id) {
       </div>
     `;
     document.getElementById('profileModal').style.display = 'flex';
+    loadBedUsage(id);
   } catch (err) {
     alert("Could not open customer: " + err.message);
   }
+}
+
+function daysLeft(dateStr) {
+  if (!dateStr) return 0;
+  const exp = new Date(dateStr);
+  const now = new Date();
+  const diff = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
+  return Math.max(0, diff);
+}
+
+async function loadBedUsage(customerId) {
+  const res = await fetch(`/api/customer/${customerId}/bed-usage`);
+  const usage = res.ok ? await res.json() : [];
+  const el = document.getElementById('bedUsage');
+  if (!el) return;
+  el.innerHTML = usage.length ? usage.map(u => `
+    <div style="font-size:0.85rem;margin:4px 0">${u.room_name || 'Bed'} • ${u.minutes || 0} min • ${new Date(u.created_at).toLocaleDateString()}</div>
+  `).join('') : '<p style="color:var(--muted);font-size:0.85rem">No bed usage recorded yet</p>';
 }
 
 function startOrder() {
@@ -778,6 +813,39 @@ async function sendSMSCampaign() {
   } else {
     document.getElementById('smsResult').innerHTML = `<div style="color:#e74c3c">Error: ${data.detail}</div>`;
   }
+}
+
+let currentWaitRoomId = null;
+
+async function showWaitlist(roomId, roomName) {
+  currentWaitRoomId = roomId;
+  document.getElementById('waitlistTitle').textContent = `Waiting List — ${roomName}`;
+  const res = await fetch(`/api/waitlist/${roomId}`);
+  const list = res.ok ? await res.json() : [];
+  document.getElementById('waitlistContent').innerHTML = list.length ? list.map(w => `
+    <div class="queue-item">
+      ${w.customer_name}
+      <button class="btn btn-red" style="float:right;padding:2px 8px;font-size:0.75rem" onclick="removeFromWaitlist(${w.id})">✕</button>
+    </div>
+  `).join('') : '<p style="color:var(--muted)">No one waiting</p>';
+  document.getElementById('waitlistModal').style.display = 'flex';
+}
+
+async function addToWaitlist() {
+  const name = document.getElementById('waitlistCustomer').value.trim();
+  if (!name || !currentWaitRoomId) return;
+  await fetch('/api/waitlist', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({room_id: currentWaitRoomId, customer_name: name})
+  });
+  document.getElementById('waitlistCustomer').value = '';
+  showWaitlist(currentWaitRoomId, document.getElementById('waitlistTitle').textContent.replace('Waiting List — ', ''));
+}
+
+async function removeFromWaitlist(id) {
+  await fetch(`/api/waitlist/${id}`, {method: 'DELETE'});
+  showWaitlist(currentWaitRoomId, document.getElementById('waitlistTitle').textContent.replace('Waiting List — ', ''));
 }
 
 // Init

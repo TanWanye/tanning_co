@@ -426,7 +426,7 @@ def finish_session(room_id: int):
                      WHERE name = ?""", (minutes_used, customer_name))
     
     c.execute("""UPDATE rooms 
-                 SET status = 'cleaning', customer_name = NULL, remaining_minutes = 0 
+                 SET status = 'available', customer_name = NULL, remaining_minutes = 0 
                  WHERE id = ?""", (room_id,))
     conn.commit()
     conn.close()
@@ -655,6 +655,65 @@ def export_customers():
     from fastapi.responses import StreamingResponse
     return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              headers={"Content-Disposition": "attachment; filename=customers_backup.xlsx"})
+
+@app.get("/api/customer/{customer_id}/bed-usage")
+def customer_bed_usage(customer_id: int):
+    conn = get_db()
+    # Use orders that contain session items as a simple usage log for now
+    orders = conn.execute(
+        "SELECT items, created_at FROM orders WHERE customer_id = ? AND (items LIKE '%MIN%' OR items LIKE '%min%') ORDER BY created_at DESC LIMIT 10",
+        (customer_id,)
+    ).fetchall()
+    conn.close()
+    result = []
+    for o in orders:
+        result.append({
+            "room_name": "Session",
+            "minutes": 0,
+            "created_at": o["created_at"],
+            "items": o["items"]
+        })
+    return result
+
+# Waiting list table
+def ensure_waitlist_table():
+    conn = get_db()
+    conn.execute('''CREATE TABLE IF NOT EXISTS waitlist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_id INTEGER,
+        customer_id INTEGER,
+        customer_name TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    conn.commit()
+    conn.close()
+
+ensure_waitlist_table()
+
+@app.get("/api/waitlist/{room_id}")
+def get_waitlist(room_id: int):
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM waitlist WHERE room_id = ? ORDER BY created_at", (room_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.post("/api/waitlist")
+def add_to_waitlist(data: dict):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("INSERT INTO waitlist (room_id, customer_id, customer_name) VALUES (?, ?, ?)",
+              (data.get("room_id"), data.get("customer_id"), data.get("customer_name")))
+    conn.commit()
+    conn.close()
+    return {"message": "Added to waitlist"}
+
+@app.delete("/api/waitlist/{wait_id}")
+def remove_from_waitlist(wait_id: int):
+    conn = get_db()
+    conn.execute("DELETE FROM waitlist WHERE id = ?", (wait_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Removed from waitlist"}
 
 # Serve frontend
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
