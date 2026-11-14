@@ -270,3 +270,20 @@ table.data th { color: var(--muted); font-weight: 600; font-size: .78rem; text-t
 }
 .mb { margin-bottom: 12px; }
 .mt { margin-top: 12px; }
+
+/* waiting list + special offers */
+.waiting-badge { font-size: .78rem; font-weight: 650; color: var(--gold); }
+.list-item.ready { border-color: var(--free); }
+.ready-text { color: var(--free); font-size: .82rem; font-weight: 650; margin-top: 2px; }
+.bed-pick button.busy { border-style: dashed; color: var(--muted); }
+.bed-pick button.busy b { color: var(--text); }
+.bed-pick button.busy:hover { border-color: var(--gold); background: rgba(255, 209, 102, .07); }
+.bed-pick .wait-hint { color: var(--gold); font-weight: 650; }
+.bed-pick .free-hint { color: var(--free); font-weight: 650; }
+.wait-any { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.wait-any.emphasise { background: rgba(251, 191, 36, .08); border: 1px solid rgba(251, 191, 36, .35); border-radius: 10px; padding: 10px 12px; }
+.products.offers { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.product.offer { position: relative; border: 1.5px solid var(--gold); background: rgba(255, 209, 102, .07); padding-top: 30px; }
+.product.offer:hover { border-color: var(--brand); }
+.offer-badge { position: absolute; top: 9px; left: 12px; font-size: .68rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #1b1009; background: var(--gold); padding: 2px 8px; border-radius: 999px; }
+.section-label .link-btn { text-transform: none; letter-spacing: 0; margin-left: 8px; }

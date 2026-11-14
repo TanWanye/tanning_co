@@ -64,6 +64,21 @@ New online sign-ups appear in **New sign-ups to check** on the bed board. Check 
 **Mark ID checked**. Customers who choose **skin type 1** are flagged in red, because sunbeds aren't
 recommended for that skin type.
 
+## Courses, special offers and the waiting list
+
+* **Add courses to account** (customer profile) lists special offers first, then single sessions,
+  minute packs and unlimited packages. Everything is added to the customer's balance as minutes.
+* **Special offers**: managers switch each offer on or off under **More → Special offers**
+  (or "Manage offers" in the Add courses list). Hidden offers can't be sold. The setting is kept
+  when the app restarts. Offer prices and wording are in `PRICE_LIST` at the top of `backend/main.py`.
+  * Special Offer: 120 mins for £45
+  * Special Offer: 60 mins for £25
+  * Special Offer: 120 mins + FREE bottle of cream (worth £19.95) for £61. Staff get a reminder to hand over the cream.
+* **Waiting list**: when starting a session, beds in use show "+ Waiting list". If every bed is busy,
+  there's a "next free bed" option. A customer can also be added from their profile. Everyone waiting
+  shows in the Waiting list panel, which turns green when their bed (or any bed) is free. Starting
+  their session removes them from the list.
+
 ## Marketing (UK GDPR / PECR)
 
 Email and SMS campaigns **only go to customers who have opted in**. Online sign-ups choose for themselves.

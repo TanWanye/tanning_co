@@ -83,6 +83,26 @@ def add_column(c, table, column, coltype):
         c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
 
 
+# code, name, price, category, minutes added, note for staff, shown by default
+PRICE_LIST = [
+    ("OFFER_120_45", "Special Offer: 120 mins for £45", 45.00, "offer", 120, None, 1),
+    ("OFFER_60_25", "Special Offer: 60 mins for £25", 25.00, "offer", 60, None, 1),
+    ("OFFER_120_CREAM", "Special Offer: 120 mins + FREE cream", 61.00, "offer", 120,
+     "Give the customer a FREE bottle of cream (worth £19.95)", 1),
+    ("MIN_3", "3 MIN", 7.00, "session", 3, None, 1),
+    ("MIN_6", "6 MIN", 8.00, "session", 6, None, 1),
+    ("MIN_9", "9 MIN", 10.00, "session", 9, None, 1),
+    ("MIN_12", "12 MIN", 13.00, "session", 12, None, 1),
+    ("MIN_15", "15 MIN", 18.00, "session", 15, None, 1),
+    ("PACK_30", "30 MIN Pack", 30.00, "package", 30, None, 1),
+    ("PACK_60", "60 MIN Pack", 39.00, "package", 60, None, 1),
+    ("PACK_100", "100 MIN Pack", 56.00, "package", 100, None, 1),
+    ("PACK_120", "120 MIN Pack", 61.00, "package", 120, None, 1),
+    ("UNL_WEEK", "Unlimited Weekly", 46.00, "unlimited", 105, None, 1),
+    ("UNL_MONTH", "Unlimited Monthly", 79.00, "unlimited", 450, None, 1),
+]
+
+
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
     with db() as conn:
@@ -161,6 +181,7 @@ def init_db():
             room_id INTEGER, customer_id INTEGER, customer_name TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
+        add_column(c, "waitlist", "shop", "TEXT")
         c.execute('''CREATE TABLE IF NOT EXISTS sms_settings (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             account_sid TEXT, auth_token TEXT, from_number TEXT
@@ -203,27 +224,32 @@ def init_db():
             for i in range(1, 4):
                 c.execute("INSERT INTO rooms (id, name, type) VALUES (?, ?, 'Stand-up')", (i, f"Wyken Stand-up {i}"))
             for i in range(4, 7):
-                c.execute("INSERT INTO rooms (id, name, type) VALUES (?, ?, 'Lie-down')", (i, f"Wyken Lie-down {i}"))
+                c.execute("INSERT INTO rooms (id, name, type) VALUES (?, ?, 'Lay-down')", (i, f"Wyken Lay-down {i}"))
             for i in range(7, 10):
                 c.execute("INSERT INTO rooms (id, name, type) VALUES (?, ?, 'Stand-up')", (i, f"Earlsdon Stand-up {i-6}"))
             for i in range(10, 13):
-                c.execute("INSERT INTO rooms (id, name, type) VALUES (?, ?, 'Lie-down')", (i, f"Earlsdon Lie-down {i-6}"))
+                c.execute("INSERT INTO rooms (id, name, type) VALUES (?, ?, 'Lay-down')", (i, f"Earlsdon Lay-down {i-6}"))
 
-        # Price list (refreshed on every start)
-        c.execute("DELETE FROM products")
-        c.executemany("INSERT INTO products (name, price, category, image) VALUES (?, ?, ?, ?)", [
-            ("3 MIN", 7.00, "session", "/static/images/minutes.jpg"),
-            ("6 MIN", 8.00, "session", "/static/images/minutes.jpg"),
-            ("9 MIN", 10.00, "session", "/static/images/minutes.jpg"),
-            ("12 MIN", 13.00, "session", "/static/images/minutes.jpg"),
-            ("15 MIN", 18.00, "session", "/static/images/minutes.jpg"),
-            ("30 MIN Pack", 30.00, "package", "/static/images/minutes.jpg"),
-            ("60 MIN Pack", 39.00, "package", "/static/images/minutes.jpg"),
-            ("100 MIN Pack", 56.00, "package", "/static/images/minutes.jpg"),
-            ("120 MIN Pack", 61.00, "package", "/static/images/minutes.jpg"),
-            ("Unlimited Weekly", 46.00, "unlimited", "/static/images/weekly.jpg"),
-            ("Unlimited Monthly", 79.00, "unlimited", "/static/images/monthly.jpg"),
-        ])
+        # Rename lie-down beds to lay-down on existing databases (and in past session records)
+        c.execute("UPDATE rooms SET name = REPLACE(name, 'Lie-down', 'Lay-down'), type = REPLACE(type, 'Lie-down', 'Lay-down')")
+        c.execute("UPDATE sessions SET room_name = REPLACE(room_name, 'Lie-down', 'Lay-down') WHERE room_name LIKE '%Lie-down%'")
+
+        # Price list. Prices and names are refreshed on every start; the show/hide
+        # setting of special offers is kept (managers switch offers on and off).
+        for col, typ in [("code", "TEXT"), ("minutes", "INTEGER DEFAULT 0"), ("active", "INTEGER DEFAULT 1"),
+                         ("note", "TEXT"), ("sort", "INTEGER DEFAULT 0")]:
+            add_column(c, "products", col, typ)
+        c.execute("DELETE FROM products WHERE code IS NULL")   # old-style rows from before this version
+        for sort, (code, name, price, cat, mins, note, default_active) in enumerate(PRICE_LIST):
+            row = c.execute("SELECT id FROM products WHERE code = ?", (code,)).fetchone()
+            if row:
+                c.execute("UPDATE products SET name = ?, price = ?, category = ?, minutes = ?, note = ?, sort = ? WHERE id = ?",
+                          (name, price, cat, mins, note, sort, row["id"]))
+            else:
+                c.execute("""INSERT INTO products (code, name, price, category, minutes, note, active, sort, image)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, '/static/images/minutes.jpg')""",
+                          (code, name, price, cat, mins, note, default_active, sort))
+        c.execute(f"DELETE FROM products WHERE code NOT IN ({','.join('?' * len(PRICE_LIST))})", [p[0] for p in PRICE_LIST])
 
         # Give every customer an unsubscribe token for email links
         for row in c.execute("SELECT id FROM customers WHERE unsubscribe_token IS NULL").fetchall():
@@ -336,7 +362,7 @@ PUBLIC_PATHS = {
     "/api/customer/login", "/api/customer/logout", "/api/customer/me", "/api/customer/my-history",
 }
 PUBLIC_PREFIXES = ("/static/",)
-ADMIN_PREFIXES = ("/api/email/", "/api/sms/", "/api/import/", "/api/export/", "/api/staff", "/api/audit")
+ADMIN_PREFIXES = ("/api/email/", "/api/sms/", "/api/import/", "/api/export/", "/api/staff", "/api/audit", "/api/offers")
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 SECURITY_HEADERS = {
@@ -497,8 +523,13 @@ class UseMinutes(BaseModel):
     room_id: int
 
 
+class OfferActive(BaseModel):
+    active: bool
+
+
 class WaitlistAdd(BaseModel):
-    room_id: int
+    room_id: Optional[int] = None      # None = next free bed at `shop`
+    shop: Optional[str] = None
     customer_name: str
     customer_id: Optional[int] = None
 
@@ -825,9 +856,28 @@ def mark_id_checked(customer_id: int, request: Request):
 
 @app.get("/api/products")
 def get_products():
+    """Products staff can sell: everything except special offers that are switched off."""
     with db() as conn:
-        rows = conn.execute("SELECT * FROM products ORDER BY id").fetchall()
+        rows = conn.execute("SELECT id, code, name, price, category, minutes, note FROM products WHERE active = 1 ORDER BY sort").fetchall()
     return [dict(p) for p in rows]
+
+
+@app.get("/api/offers")
+def list_offers():
+    with db() as conn:
+        rows = conn.execute("SELECT id, code, name, price, minutes, note, active FROM products WHERE category = 'offer' ORDER BY sort").fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.post("/api/offers/{product_id}/active")
+def set_offer_active(product_id: int, data: OfferActive, request: Request):
+    with db() as conn:
+        row = conn.execute("SELECT name FROM products WHERE id = ? AND category = 'offer'", (product_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Offer not found")
+        conn.execute("UPDATE products SET active = ? WHERE id = ?", (1 if data.active else 0, product_id))
+    audit(request, "offer_shown" if data.active else "offer_hidden", row["name"])
+    return {"ok": True}
 
 
 @app.post("/api/orders")
@@ -843,13 +893,13 @@ def create_order(order: OrderCreate, request: Request):
         # Use the real prices from the price list, not whatever the browser sent
         priced = []
         for i in order.items:
-            p = c.execute("SELECT id, name, price FROM products WHERE id = ?", (i.id,)).fetchone()
+            p = c.execute("SELECT id, code, name, price, category, minutes FROM products WHERE id = ? AND active = 1", (i.id,)).fetchone()
             if not p or i.qty < 1 or i.qty > 20:
-                raise HTTPException(400, "Unknown product or quantity")
-            priced.append((p["name"], p["price"], i.qty))
+                raise HTTPException(400, "That product or offer isn't available")
+            priced.append((p["name"], p["price"], i.qty, p["category"], p["minutes"] or 0, p["code"]))
         discount = min(max(order.discount, 0), 100)
-        total = round(sum(price * qty for _, price, qty in priced) * (100 - discount) / 100, 2)
-        items_str = ", ".join(f"{qty}x {name}" for name, _, qty in priced)
+        total = round(sum(p[1] * p[2] for p in priced) * (100 - discount) / 100, 2)
+        items_str = ", ".join(f"{p[2]}x {p[0]}" for p in priced)
         shop = order.shop if order.shop in SHOPS else "Unknown"
 
         c.execute("""INSERT INTO orders (customer_id, total, discount, payment_method, items, shop, staff)
@@ -857,7 +907,7 @@ def create_order(order: OrderCreate, request: Request):
                   (order.customer_id, total, discount, order.payment_method[:40], items_str, shop, staff_name(request)))
         order_id = c.lastrowid
 
-        is_package_only = all(("pack" in n.lower() or "unlimited" in n.lower() or "min" in n.lower()) for n, _, _ in priced)
+        is_package_only = True   # everything on the price list is added to the account as minutes
         if not is_package_only:
             c.execute("INSERT INTO queue (customer_id, customer_name, items, total, payment_method) VALUES (?, ?, ?, ?, ?)",
                       (order.customer_id, customer["name"], items_str, total, order.payment_method[:40]))
@@ -866,22 +916,17 @@ def create_order(order: OrderCreate, request: Request):
                             avg_spend = (avg_spend * orders + ?) / (orders + 1)
                      WHERE id = ?""", (int(total), total, order.customer_id))
 
-        for name, _, qty in priced:
-            n = name.lower()
-            if "min pack" in n:
-                mins = next((m for m in (120, 100, 60, 30) if str(m) in n), 0)
-                c.execute("UPDATE customers SET remaining_minutes = remaining_minutes + ? WHERE id = ?", (mins * qty, order.customer_id))
-            elif " min" in n and "unlimited" not in n:
-                mins = next((m for m in (15, 12, 9, 6, 3) if str(m) in n), 0)
-                c.execute("UPDATE customers SET remaining_minutes = remaining_minutes + ? WHERE id = ?", (mins * qty, order.customer_id))
-            elif "unlimited weekly" in n:
+        for name, _, qty, cat, mins, code in priced:
+            if code == "UNL_WEEK":
                 expires = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
                 c.execute("""UPDATE customers SET package_type = 'weekly', package_expires = ?,
-                                    remaining_minutes = remaining_minutes + 105 WHERE id = ?""", (expires, order.customer_id))
-            elif "unlimited monthly" in n:
+                                    remaining_minutes = remaining_minutes + ? WHERE id = ?""", (expires, mins, order.customer_id))
+            elif code == "UNL_MONTH":
                 expires = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
                 c.execute("""UPDATE customers SET package_type = 'monthly', package_expires = ?,
-                                    remaining_minutes = remaining_minutes + 450 WHERE id = ?""", (expires, order.customer_id))
+                                    remaining_minutes = remaining_minutes + ? WHERE id = ?""", (expires, mins, order.customer_id))
+            else:
+                c.execute("UPDATE customers SET remaining_minutes = remaining_minutes + ? WHERE id = ?", (mins * qty, order.customer_id))
     audit(request, "order_created", f"#{order_id} customer #{order.customer_id}: {items_str} £{total:.2f}")
     return {"order_id": order_id, "total": total, "message": "Order created"}
 
@@ -972,6 +1017,7 @@ def use_minutes(data: UseMinutes, request: Request):
         c.execute("""UPDATE rooms SET status = 'occupied', customer_name = ?, customer_id = ?, prepaid = 1,
                             remaining_minutes = ?, started_at = CURRENT_TIMESTAMP WHERE id = ?""",
                   (customer["name"], data.customer_id, data.minutes, data.room_id))
+        c.execute("DELETE FROM waitlist WHERE customer_id = ?", (data.customer_id,))
     audit(request, "bed_assigned", f"{room['name']} ← {customer['name']} ({data.minutes} min)")
     return {"message": "Bed assigned", "minutes_used": data.minutes}
 
@@ -991,6 +1037,23 @@ def customer_bed_usage(customer_id: int):
     return [dict(r) for r in rows]
 
 
+@app.get("/api/waitlist")
+def get_all_waitlist():
+    """Everyone waiting, for a particular bed or for the next free bed at a salon."""
+    with db() as conn:
+        rows = conn.execute("""SELECT w.id, w.room_id, w.customer_id, w.customer_name, w.created_at,
+                                      COALESCE(w.shop, '') AS shop, r.name AS room_name, r.status AS room_status
+                               FROM waitlist w LEFT JOIN rooms r ON r.id = w.room_id
+                               ORDER BY w.created_at, w.id""").fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        if not d["shop"] and d["room_name"]:
+            d["shop"] = shop_from_room(d["room_name"])
+        out.append(d)
+    return out
+
+
 @app.get("/api/waitlist/{room_id}")
 def get_waitlist(room_id: int):
     with db() as conn:
@@ -999,14 +1062,29 @@ def get_waitlist(room_id: int):
 
 
 @app.post("/api/waitlist")
-def add_to_waitlist(data: WaitlistAdd):
+def add_to_waitlist(data: WaitlistAdd, request: Request):
     name = data.customer_name.strip()[:80]
     if not name:
         raise HTTPException(400, "Enter a name")
     with db() as conn:
-        conn.execute("INSERT INTO waitlist (room_id, customer_id, customer_name) VALUES (?, ?, ?)",
-                     (data.room_id, data.customer_id, name))
-    return {"message": "Added to waiting list"}
+        if data.room_id is not None:
+            room = conn.execute("SELECT name FROM rooms WHERE id = ?", (data.room_id,)).fetchone()
+            if not room:
+                raise HTTPException(404, "Bed not found")
+            shop, where = shop_from_room(room["name"]), room["name"]
+        else:
+            if data.shop not in SHOPS:
+                raise HTTPException(400, "Choose a salon")
+            shop, where = data.shop, f"next free bed at {data.shop}"
+        if data.customer_id:
+            dup = conn.execute("SELECT 1 FROM waitlist WHERE customer_id = ? AND room_id IS ? AND COALESCE(shop, ?) = ?",
+                               (data.customer_id, data.room_id, shop, shop)).fetchone()
+            if dup:
+                raise HTTPException(400, f"{name} is already on that waiting list")
+        conn.execute("INSERT INTO waitlist (room_id, customer_id, customer_name, shop) VALUES (?, ?, ?, ?)",
+                     (data.room_id, data.customer_id, name, shop))
+    audit(request, "waitlist_added", f"{name} - {where}")
+    return {"message": f"{name} added to the waiting list ({where})"}
 
 
 @app.delete("/api/waitlist/{wait_id}")
@@ -1020,9 +1098,8 @@ def remove_from_waitlist(wait_id: int):
 def daily_report(date: str = None):
     if not date:
         date = datetime.now().strftime("%Y-%m-%d")
-    products_list = ["3 MIN", "6 MIN", "9 MIN", "12 MIN", "15 MIN", "30 MIN Pack", "60 MIN Pack",
-                     "100 MIN Pack", "120 MIN Pack", "Unlimited Weekly", "Unlimited Monthly"]
     with db() as conn:
+        products_list = [r["name"] for r in conn.execute("SELECT name FROM products ORDER BY sort").fetchall()]
         sessions = conn.execute("SELECT * FROM sessions WHERE date(created_at) = ? ORDER BY created_at", (date,)).fetchall()
         orders = conn.execute("SELECT total, shop, items FROM orders WHERE date(created_at) = ?", (date,)).fetchall()
         minutes_left = {s: conn.execute("SELECT COALESCE(SUM(remaining_minutes), 0) FROM customers WHERE shop = ?", (s,)).fetchone()[0]

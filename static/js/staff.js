@@ -22,6 +22,8 @@
     site: readSite(),
     products: [],
     customer: null,
+    waitlist: [],
+    waitKey: '',
     searchTimer: null
   };
 
@@ -154,10 +156,12 @@
       body = '<div class="bed-free-note">Ready</div>';
       actions = '<button class="btn btn-sm" data-action="start-bed" data-room="' + r.id + '">Start session</button>';
     }
+    var waiting = state.waitlist.filter(function (w) { return w.room_id === r.id; }).length;
     return '<div class="bed ' + esc(r.status) + '">' +
       '<div class="bed-top"><div class="bed-name">' + esc(shortBed(r.name)) + '</div>' +
       '<span class="pill ' + esc(r.status) + '">' + esc(label) + '</span></div>' +
-      body + '<div class="bed-actions">' + actions + '</div></div>';
+      body + (waiting ? '<div class="waiting-badge">' + waiting + ' waiting</div>' : '') +
+      '<div class="bed-actions">' + actions + '</div></div>';
   }
 
   function tick() {
@@ -191,6 +195,57 @@
           '<button class="btn btn-sm btn-danger" data-action="queue-remove" data-id="' + item.id + '">Remove</button></div></div>';
       }).join('') : '<div class="empty">No one waiting</div>';
     } catch (e) { /* ignore */ }
+  }
+
+  function minsLeft(r) {
+    var st = utc(r.started_at);
+    if (!st) return null;
+    return Math.max(0, Math.ceil((st.getTime() + (r.remaining_minutes || 0) * 60000 - Date.now()) / 60000));
+  }
+
+  async function loadWaitlist(force) {
+    try {
+      var list = await api('/api/waitlist');
+      var key = JSON.stringify(list) + state.roomsKey;
+      if (!force && key === state.waitKey) return;
+      state.waitlist = list; state.waitKey = key;
+      renderWaitlist();
+      renderBoard();
+    } catch (e) { /* ignore */ }
+  }
+
+  function renderWaitlist() {
+    var list = state.waitlist.filter(function (w) { return state.site === 'all' || w.shop === state.site; });
+    $('waitCount').textContent = list.length;
+    $('waitList').innerHTML = list.length ? list.map(function (w) {
+      var target, freeBed = null;
+      if (w.room_id) {
+        target = 'for ' + shortBed(w.room_name || '') + ' (' + w.shop + ')';
+        var room = state.rooms.find(function (r) { return r.id === w.room_id; });
+        if (room && room.status === 'available') freeBed = room.id;
+      } else {
+        target = 'next free bed · ' + w.shop;
+        var any = state.rooms.find(function (r) { return r.status === 'available' && r.shop === w.shop; });
+        if (any) freeBed = any.id;
+      }
+      var mins = Math.max(0, Math.round((Date.now() - utc(w.created_at)) / 60000));
+      return '<div class="list-item' + (freeBed ? ' ready' : '') + '"><div class="row"><b>' + esc(w.customer_name) + '</b>' +
+        '<span class="muted small">' + mins + ' min</span></div>' +
+        '<div class="muted small">' + esc(target) + '</div>' +
+        (freeBed ? '<div class="ready-text">Bed free now</div>' : '') +
+        '<div class="actions">' +
+        (w.customer_id ? '<button class="btn btn-sm' + (freeBed ? '' : ' btn-ghost') + '" data-action="waitlist-start" data-customer="' + w.customer_id + '" data-room="' + (freeBed || '') + '">Start session</button>' : '') +
+        '<button class="btn btn-sm btn-danger" data-action="waitlist-remove" data-id="' + w.id + '">Remove</button></div></div>';
+    }).join('') : '<div class="empty">No one waiting</div>';
+  }
+
+  async function addToWaitlist(body) {
+    try {
+      var r = await api('/api/waitlist', { body: body });
+      closeAllModals();
+      toast(r.message);
+      loadWaitlist(true);
+    } catch (e) { fail(e); }
   }
 
   async function loadSignups() {
@@ -327,7 +382,8 @@
       '</div>' +
       '<div class="profile-actions">' +
         '<button class="btn" data-action="use-minutes"' + ((p.remaining_minutes || 0) > 0 ? '' : ' disabled title="No minutes left"') + '>Start session (use minutes)</button>' +
-        '<button class="btn" data-action="add-to-account">Add to account</button>' +
+        '<button class="btn" data-action="add-to-account">Add courses to account</button>' +
+        '<button class="btn btn-ghost" data-action="wait-pick">Add to waiting list</button>' +
         '<button class="btn btn-ghost" data-action="edit-customer">Edit</button>' +
         (p.id_checked_at ? '' : '<button class="btn btn-ghost" data-action="id-check">Mark ID checked</button>') +
         '<button class="btn btn-ghost" data-action="set-pin">' + (p.has_pin ? 'Reset PIN' : 'Set PIN') + '</button>' +
@@ -340,25 +396,48 @@
 
   // ------------------------------------------------------------------ add to account
   function productsHtml() {
-    var groups = [['session', 'Single sessions (added as minutes)'], ['package', 'Minute packs'], ['unlimited', 'Unlimited']];
+    var groups = [['offer', 'Special offers'], ['session', 'Single sessions (added as minutes)'], ['package', 'Minute packs'], ['unlimited', 'Unlimited']];
     return groups.map(function (g) {
       var items = state.products.filter(function (p) { return p.category === g[0]; });
-      if (!items.length) return '';
-      return '<div class="section-label">' + esc(g[1]) + '</div><div class="products">' + items.map(function (p) {
+      var manage = (g[0] === 'offer' && isAdmin()) ? ' <button class="link-btn small" data-action="offers">Manage offers</button>' : '';
+      if (!items.length) return g[0] === 'offer' && isAdmin() ? '<div class="section-label">Special offers' + manage + '</div><div class="empty">All offers are hidden.</div>' : '';
+      return '<div class="section-label">' + esc(g[1]) + manage + '</div><div class="products' + (g[0] === 'offer' ? ' offers' : '') + '">' + items.map(function (p) {
+        if (p.category === 'offer') {
+          return '<button class="product offer" data-action="buy" data-id="' + p.id + '"><span class="offer-badge">Special offer</span>' +
+            '<div class="p-name">' + esc(p.name.replace(/^Special Offer:\s*/i, '')) + '</div>' +
+            '<div class="p-price">' + money(p.price) + '</div>' +
+            '<div class="p-cat">' + p.minutes + ' minutes added' + (p.note ? ' + free gift' : '') + '</div></button>';
+        }
         return '<button class="product" data-action="buy" data-id="' + p.id + '"><div class="p-name">' + esc(p.name) + '</div><div class="p-price">' + money(p.price) + '</div></button>';
       }).join('') + '</div>';
     }).join('');
+  }
+
+  async function openOffers() {
+    try {
+      var offers = await api('/api/offers');
+      closeAllModals();
+      openModal('Special offers', '<p class="muted mb">Switch an offer off to hide it from the Add courses list. Switch it back on when the offer runs again.</p>' +
+        offers.map(function (o) {
+          return '<div class="list-item"><div class="row"><span><b>' + esc(o.name) + '</b><br><span class="muted small">' + money(o.price) + ' · ' + o.minutes + ' minutes' +
+            (o.note ? ' · ' + esc(o.note) : '') + '</span></span>' +
+            '<button class="btn btn-sm ' + (o.active ? '' : 'btn-ghost') + '" data-action="offer-toggle" data-id="' + o.id + '" data-active="' + (o.active ? '0' : '1') + '">' +
+            (o.active ? 'Showing – hide' : 'Hidden – show') + '</button></div></div>';
+        }).join(''), { noFocus: true });
+    } catch (e) { fail(e); }
   }
 
   async function buyProduct(id) {
     var p = state.products.find(function (x) { return x.id === id; });
     var c = state.customer;
     if (!p || !c) return;
-    var ok = await confirmBox('Add to account', 'Add <b>' + esc(p.name) + '</b> (' + money(p.price) + ') to <b>' + esc(c.name) + '</b>\'s account? Take payment at the till.', 'Add ' + money(p.price));
+    var ok = await confirmBox('Add courses to account', 'Add <b>' + esc(p.name) + '</b> (' + money(p.price) + ') to <b>' + esc(c.name) + '</b>\'s account? Take payment at the till.' +
+      (p.note ? '<br><br><b>' + esc(p.note) + '.</b>' : ''), 'Add ' + money(p.price));
     if (!ok) return;
     try {
       await api('/api/orders', { body: { customer_id: c.id, items: [{ id: p.id, name: p.name, price: p.price, qty: 1 }], discount: 0, payment_method: 'Add to Account', total: p.price, shop: shopForNew() || c.shop || 'Unknown' } });
       toast(p.name + ' added to ' + c.name + '\'s account');
+      if (p.note) toast('Reminder: ' + p.note);
       openCustomer(c.id);
       loadQueue();
     } catch (e) { fail(e); }
@@ -369,16 +448,45 @@
     return state.rooms.filter(function (r) { return r.status === 'available' && (state.site === 'all' || r.shop === state.site); });
   }
 
-  function bedPicker(selected) {
-    var beds = availableBeds();
-    if (!beds.length) return '<div class="empty">No free beds' + (state.site === 'all' ? '' : ' at ' + esc(state.site)) + ' right now.</div>';
-    return '<div class="bed-pick">' + beds.map(function (r) {
-      return '<button type="button" data-action="pick-bed" data-room="' + r.id + '"' + (r.id === selected ? ' class="selected"' : '') + '>' +
-        '<b>' + esc(shortBed(r.name)) + '</b><small>' + (state.site === 'all' ? esc(r.shop) + ' · ' : '') + esc(r.type) + '</small></button>';
+  function bedPicker(selected, mode) {
+    // mode 'free'  : only free beds (assigning from the queue)
+    // mode 'start' : free beds to pick, busy beds to join their waiting list
+    // mode 'wait'  : busy and free beds, all join a waiting list
+    mode = mode || 'free';
+    var beds = state.rooms.filter(function (r) { return state.site === 'all' || r.shop === state.site; });
+    var free = beds.filter(function (r) { return r.status === 'available'; });
+    var html = '';
+    if (mode === 'free') {
+      if (!free.length) return '<div class="empty">No free beds' + (state.site === 'all' ? '' : ' at ' + esc(state.site)) + ' right now.</div>';
+      beds = free;
+    }
+    html += '<div class="bed-pick">' + beds.map(function (r) {
+      var sub = (state.site === 'all' ? esc(r.shop) + ' · ' : '') + esc(r.type);
+      var waiting = state.waitlist.filter(function (w) { return w.room_id === r.id; }).length;
+      if (r.status === 'available' && mode !== 'wait') {
+        return '<button type="button" data-action="pick-bed" data-room="' + r.id + '"' + (r.id === selected ? ' class="selected"' : '') + '>' +
+          '<b>' + esc(shortBed(r.name)) + '</b><small>' + sub + '</small><small class="free-hint">Free</small></button>';
+      }
+      var status = r.status === 'occupied' ? 'In use' + (minsLeft(r) !== null ? ' · ' + minsLeft(r) + ' min left' : '') :
+                   r.status === 'cleaning' ? 'Cleaning' : 'Free';
+      return '<button type="button" class="busy" data-action="wait-bed" data-room="' + r.id + '">' +
+        '<b>' + esc(shortBed(r.name)) + '</b><small>' + sub + '</small><small>' + esc(status) + (waiting ? ' · ' + waiting + ' waiting' : '') + '</small>' +
+        '<small class="wait-hint">+ Waiting list</small></button>';
     }).join('') + '</div>';
+    if (mode !== 'free') {
+      var sites = state.site === 'all' ? ['Wyken', 'Earlsdon'] : [state.site];
+      var none = mode === 'start' && !free.length;
+      html += '<div class="wait-any' + (none ? ' emphasise' : '') + '">' +
+        (none ? '<b>All beds are in use.</b> ' : '<span class="muted small">Any bed will do?</span> ') +
+        sites.map(function (s) {
+          return '<button type="button" class="btn btn-sm' + (none ? '' : ' btn-ghost') + '" data-action="wait-any" data-shop="' + s + '">+ Waiting list – next free bed' + (sites.length > 1 ? ' at ' + s : '') + '</button>';
+        }).join(' ') + '</div>';
+    }
+    return html;
   }
 
   function openUseMinutes(c, roomId) {
+    state.customer = c;
     var max = c.remaining_minutes || 0;
     var quick = [3, 6, 9, 12, 15].filter(function (m) { return m <= max; });
     closeAllModals();
@@ -388,7 +496,7 @@
       '<div class="section-label">Minutes (' + max + ' available)</div>' +
       '<div class="quick-mins">' + quick.map(function (q) { return '<button type="button" class="btn btn-sm btn-ghost" data-action="quick-min" data-min="' + q + '">' + q + ' min</button>'; }).join('') + '</div>' +
       '<label class="field"><input type="number" name="minutes" min="1" max="' + Math.min(max, 30) + '" required placeholder="Minutes"></label>' +
-      '<div class="section-label">Bed</div>' + bedPicker(roomId) +
+      '<div class="section-label">Bed</div>' + bedPicker(roomId, 'start') +
       '<input type="hidden" name="room" value="' + (roomId || '') + '">' +
       '<div class="error-text" data-error></div>' +
       '<div class="form-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Cancel</button><button class="btn" type="submit">Start session</button></div></form>');
@@ -520,11 +628,40 @@
       document.querySelectorAll('.menu-list').forEach(function (m) { m.classList.add('hidden'); });
       if (open) menu.classList.remove('hidden');
     },
-    site: function (el) { state.site = el.dataset.site; saveSite(state.site); renderBoard(); },
+    site: function (el) { state.site = el.dataset.site; saveSite(state.site); renderBoard(); renderWaitlist(); },
     'new-customer': function () { closeSearch(); closeAllModals(); openModal('New customer', customerForm()); },
     'open-customer': function (el) { openCustomer(Number(el.dataset.id)); },
     'edit-customer': function () { openModal('Edit customer', customerForm(state.customer)); },
-    'add-to-account': function () { openModal('Add to ' + state.customer.name + '\'s account', productsHtml(), { wide: true, noFocus: true }); },
+    'add-to-account': function () { openModal('Add courses to ' + state.customer.name + '\'s account', productsHtml(), { wide: true, noFocus: true }); },
+    offers: openOffers,
+    'offer-toggle': async function (el) {
+      try {
+        await api('/api/offers/' + el.dataset.id + '/active', { body: { active: el.dataset.active === '1' } });
+        state.products = await api('/api/products');
+        toast(el.dataset.active === '1' ? 'Offer is now showing' : 'Offer hidden');
+        openOffers();
+      } catch (e) { fail(e); }
+    },
+    'wait-pick': function () {
+      openModal('Waiting list – ' + state.customer.name, '<p class="muted mb">Pick the bed they want, or the next free bed.</p>' + bedPicker(null, 'wait'), { wide: true, noFocus: true });
+    },
+    'wait-bed': function (el) {
+      var c = state.customer;
+      if (!c) return;
+      addToWaitlist({ room_id: Number(el.dataset.room), customer_id: c.id, customer_name: c.name });
+    },
+    'wait-any': function (el) {
+      var c = state.customer;
+      if (!c) return;
+      addToWaitlist({ room_id: null, shop: el.dataset.shop, customer_id: c.id, customer_name: c.name });
+    },
+    'waitlist-start': async function (el) {
+      try {
+        var c = await api('/api/customers/' + el.dataset.customer);
+        if ((c.remaining_minutes || 0) < 1) { toast(c.name + ' has no minutes left – add courses first', true); openCustomer(c.id); return; }
+        openUseMinutes(c, el.dataset.room ? Number(el.dataset.room) : null);
+      } catch (e) { fail(e); }
+    },
     buy: function (el) { buyProduct(Number(el.dataset.id)); },
     'use-minutes': function () { openUseMinutes(state.customer, null); },
     'quick-min': function (el) { el.closest('form').minutes.value = el.dataset.min; },
@@ -577,11 +714,14 @@
     },
     waitlist: function (el) { openWaitlist(Number(el.dataset.room)); },
     'waitlist-remove': async function (el) {
-      try { await api('/api/waitlist/' + el.dataset.id, { method: 'DELETE' }); closeModal(); openWaitlist(Number(el.dataset.room)); }
-      catch (e) { fail(e); }
+      try {
+        await api('/api/waitlist/' + el.dataset.id, { method: 'DELETE' });
+        if (el.dataset.room) { closeModal(); openWaitlist(Number(el.dataset.room)); }
+        loadWaitlist(true);
+      } catch (e) { fail(e); }
     },
     'queue-assign': function (el) {
-      openModal('Assign a bed', '<div class="modal-queue" data-queue="' + el.dataset.id + '">' + bedPicker(null) + '</div>', { noFocus: true });
+      openModal('Assign a bed', '<div class="modal-queue" data-queue="' + el.dataset.id + '">' + bedPicker(null, 'free') + '</div>', { noFocus: true });
       topModal().querySelector('.modal-queue').dataset.queue = el.dataset.id;
     },
     'queue-remove': async function (el) {
@@ -680,6 +820,7 @@
       await api('/api/waitlist', { body: { room_id: Number(f.dataset.room), customer_name: f.name.value.trim() } });
       closeModal();
       openWaitlist(Number(f.dataset.room));
+      loadWaitlist(true);
     },
     'email-campaign': async function (f) {
       if (!await confirmBox('Send email campaign', 'Send this email now? It can\'t be recalled.', 'Send')) return;
@@ -806,9 +947,9 @@
     document.querySelectorAll('.admin-only').forEach(function (el) { el.classList.toggle('hidden', !isAdmin()); });
     renderBoard();
     try { state.products = await api('/api/products'); } catch (e) { /* ignore */ }
-    loadRooms(true); loadQueue(); loadSignups();
+    loadRooms(true); loadQueue(); loadSignups(); loadWaitlist(true);
     setInterval(tick, 1000);
-    setInterval(function () { loadRooms(); loadQueue(); }, 8000);
+    setInterval(function () { loadRooms(); loadQueue(); loadWaitlist(); }, 8000);
     setInterval(loadSignups, 30000);
   }
   init();

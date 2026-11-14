@@ -34,6 +34,7 @@
       <div class="admin-only">
         <div class="sep"></div>
         <div class="label">Manager</div>
+        <button data-action="offers">Special offers (show / hide)</button>
         <button data-action="email-campaign">Email campaign</button>
         <button data-action="sms-campaign">SMS campaign</button>
         <button data-action="import">Import customers (Excel)</button>
@@ -65,6 +66,10 @@
 <main class="layout">
   <section class="board" id="board" aria-live="polite"></section>
   <aside class="side">
+    <div class="panel">
+      <h3>Waiting list <span class="badge-count" id="waitCount">0</span></h3>
+      <div id="waitList"></div>
+    </div>
     <div class="panel">
       <h3>Queue <span class="badge-count" id="queueCount">0</span></h3>
       <div id="queueList"></div>
