@@ -121,7 +121,6 @@ def init_db():
             orders INTEGER DEFAULT 0,
             visits INTEGER DEFAULT 0,
             avg_spend REAL DEFAULT 0,
-            loyalty INTEGER DEFAULT 0,
             remaining_minutes INTEGER DEFAULT 0,
             pin TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -141,6 +140,12 @@ def init_db():
         ]:
             add_column(c, "customers", col, typ)
         add_column(c, "customers", "id_type", "TEXT")
+        # Loyalty points have been withdrawn: remove the column and every stored balance
+        if "loyalty" in [r[1] for r in c.execute("PRAGMA table_info(customers)").fetchall()]:
+            try:
+                c.execute("ALTER TABLE customers DROP COLUMN loyalty")
+            except sqlite3.OperationalError:      # very old SQLite without DROP COLUMN
+                c.execute("UPDATE customers SET loyalty = NULL")
         # Minutes are kept in lots so each purchase can expire 12 months after it was bought
         c.execute('''CREATE TABLE IF NOT EXISTS minute_batches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -563,6 +568,9 @@ async def access_control(request: Request, call_next):
         resp.headers["Strict-Transport-Security"] = "max-age=31536000"
     if is_api or path in ("/", "/login", "/customer"):
         resp.headers["Cache-Control"] = "no-store"
+    elif path.startswith(("/static/js/", "/static/css/")):
+        # always check for a newer version so staff never see an out-of-date screen after an update
+        resp.headers["Cache-Control"] = "no-cache"
     return resp
 
 
