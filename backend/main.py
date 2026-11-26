@@ -1453,8 +1453,9 @@ def make_backup(manual=False):
         with db() as conn:
             frames = [(sheet, pd.read_sql_query(sql, conn)) for sheet, sql in BACKUP_SHEETS]
         with pd.ExcelWriter(tmp, engine="openpyxl") as xw:
-            summary = pd.DataFrame({"Sheet": [f[0] for f in frames], "Rows": [len(f[1]) for f in frames]})
-            summary.loc[len(summary)] = ["Backup made", datetime.now(_UK).strftime("%d/%m/%Y %H:%M") if _UK else ""]
+            made = datetime.now(_UK).strftime("%d/%m/%Y %H:%M") if _UK else now_str()
+            summary = pd.DataFrame([[f[0], str(len(f[1]))] for f in frames] + [["Backup made", made]],
+                                   columns=["Sheet", "Rows"])
             summary.to_excel(xw, sheet_name="Summary", index=False)
             for sheet, df in frames:
                 df.to_excel(xw, sheet_name=sheet, index=False)
