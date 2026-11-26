@@ -15,6 +15,13 @@
     '6': 'Type 6 – never burns'
   };
 
+  var ID_TYPES = ['Driving licence', 'Passport', 'PASS card', 'Other'];
+  function isoDate(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function ukDate(iso) { if (!iso) return ''; var p = String(iso).slice(0, 10).split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
+  function idTypeSelect(name) {
+    return '<select name="' + name + '">' + ID_TYPES.map(function (t) { return '<option>' + t + '</option>'; }).join('') + '</select>';
+  }
+
   var state = {
     me: null,
     rooms: [],
@@ -303,6 +310,11 @@
         ['Wyken', 'Earlsdon'].map(function (s) { return '<option' + (s === shop ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></label>' +
       '<label class="field"><span>Skin type</span><select name="skin_type"><option value="">Not recorded</option>' +
         Object.keys(SKIN).map(function (k) { return '<option value="' + k + '"' + (c.skin_type === k ? ' selected' : '') + '>' + esc(SKIN[k]) + '</option>'; }).join('') + '</select></label>' +
+      (c.id ? '' :
+        '<div class="full id-check-box">' +
+        '<label class="check id-check-toggle"><input type="checkbox" name="id_checked"> <span><b>Photo ID checked in store</b><br>' +
+        '<span class="muted small">Tick once you have seen photo ID and the customer is 18 or over. Enter the date of birth from the ID above.</span></span></label>' +
+        '<label class="field id-type"><span>ID seen</span>' + idTypeSelect('id_type') + '</label></div>') +
       '<div class="full"><div class="section-label">Marketing consent (only tick if the customer has said yes)</div>' +
       '<label class="check"><input type="checkbox" name="marketing_email"' + (c.marketing_email ? ' checked' : '') + '> Happy to get offers by email</label>' +
       '<label class="check"><input type="checkbox" name="marketing_sms"' + (c.marketing_sms ? ' checked' : '') + '> Happy to get offers by text</label></div>' +
@@ -316,7 +328,9 @@
       name: f.name.value.trim(), phone: f.phone.value.trim(), email: f.email.value.trim(),
       postcode: f.postcode.value.trim(), dob: f.dob.value || null, shop: f.shop.value || null,
       skin_type: f.skin_type.value || null,
-      marketing_email: f.marketing_email.checked, marketing_sms: f.marketing_sms.checked
+      marketing_email: f.marketing_email.checked, marketing_sms: f.marketing_sms.checked,
+      id_checked: f.id_checked ? f.id_checked.checked : null,
+      id_type: f.id_type ? f.id_type.value : null
     };
   }
 
@@ -326,11 +340,12 @@
       var results = await Promise.all([
         api('/api/customers/' + id),
         api('/api/customer/' + id + '/history'),
-        api('/api/customer/' + id + '/bed-usage')
+        api('/api/customer/' + id + '/bed-usage'),
+        api('/api/customer/' + id + '/minutes')
       ]);
       state.customer = results[0];
       closeAllModals();
-      openModal('Customer', profileHtml(results[0], results[1], results[2]), { wide: true, noFocus: true });
+      openModal('Customer', profileHtml(results[0], results[1], results[2], results[3]), { wide: true, noFocus: true });
     } catch (e) { fail(e); }
   }
 
@@ -343,10 +358,25 @@
     return a;
   }
 
-  function profileHtml(p, history, usage) {
+  function minutesHtml(batches) {
+    var live = batches.filter(function (b) { return b.minutes_left > 0; });
+    var gone = batches.filter(function (b) { return b.minutes_left <= 0 && b.expired_minutes > 0; }).slice(0, 3);
+    if (!live.length && !gone.length) return '';
+    var soon = isoDate(new Date(Date.now() + 30 * 86400000));
+    return '<h4 class="mt">Minutes by expiry date</h4><table class="data minutes-table"><thead><tr><th>Minutes left</th><th>Bought</th><th>Expires</th><th>From</th></tr></thead><tbody>' +
+      live.map(function (b) {
+        return '<tr><td><b>' + b.minutes_left + '</b> <span class="muted small">of ' + b.minutes_added + '</span></td><td>' + ukDate(b.bought_on) + '</td>' +
+          '<td' + (b.expires_on <= soon ? ' class="expiring"' : '') + '>' + ukDate(b.expires_on) + '</td><td class="muted">' + esc(b.source || '') + '</td></tr>';
+      }).join('') +
+      gone.map(function (b) {
+        return '<tr class="expired-row"><td>' + b.expired_minutes + ' expired</td><td>' + ukDate(b.bought_on) + '</td><td>' + ukDate(b.expires_on) + '</td><td class="muted">' + esc(b.source || '') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  function profileHtml(p, history, usage, batches) {
     var age = ageFrom(p.dob);
     var tags = [];
-    tags.push(p.id_checked_at ? '<span class="tag ok">ID checked</span>' : '<span class="tag warn">ID not checked</span>');
+    tags.push(p.id_checked_at ? '<span class="tag ok">ID checked' + (p.id_type ? ' (' + esc(p.id_type) + ')' : '') + '</span>' : '<span class="tag warn">ID not checked</span>');
     if (age !== null) tags.push('<span class="tag' + (age < 18 ? ' bad' : '') + '">Age ' + age + '</span>');
     if (p.skin_type) tags.push('<span class="tag' + (p.skin_type === '1' ? ' bad' : '') + '">Skin type ' + esc(p.skin_type) + '</span>');
     else tags.push('<span class="tag warn">Skin type not recorded</span>');
@@ -378,26 +408,29 @@
         '<div class="stat"><div class="k">Minutes left</div><div class="v gold">' + (p.remaining_minutes || 0) + '</div></div>' +
         '<div class="stat"><div class="k">Package</div><div class="v small">' + pkg + '</div></div>' +
         '<div class="stat"><div class="k">Visits</div><div class="v">' + (p.visits || 0) + '</div></div>' +
-        '<div class="stat"><div class="k">Loyalty pts</div><div class="v">' + (p.loyalty || 0) + '</div></div>' +
+        '<div class="stat"><div class="k">Next to expire</div><div class="v small">' +
+          (p.next_expiry_on ? p.next_expiry_minutes + ' min<div class="muted small">on ' + ukDate(p.next_expiry_on) + '</div>' : '<span class="muted">—</span>') + '</div></div>' +
       '</div>' +
       '<div class="profile-actions">' +
         '<button class="btn" data-action="use-minutes"' + ((p.remaining_minutes || 0) > 0 ? '' : ' disabled title="No minutes left"') + '>Start session (use minutes)</button>' +
         '<button class="btn" data-action="add-to-account">Add courses to account</button>' +
         '<button class="btn btn-ghost" data-action="wait-pick">Add to waiting list</button>' +
         '<button class="btn btn-ghost" data-action="edit-customer">Edit</button>' +
-        (p.id_checked_at ? '' : '<button class="btn btn-ghost" data-action="id-check">Mark ID checked</button>') +
+        (p.id_checked_at ? '' : '<button class="btn btn-ghost id-btn" data-action="id-check">ID check in store</button>') +
         '<button class="btn btn-ghost" data-action="set-pin">' + (p.has_pin ? 'Reset PIN' : 'Set PIN') + '</button>' +
         (isAdmin() ? '<button class="btn btn-danger" data-action="delete-customer">Delete</button>' : '') +
       '</div>' +
       '<div class="cols"><div><h4>Purchases</h4><div class="history">' + hist + '</div></div>' +
       '<div><h4>Bed sessions</h4><div class="history">' + use + '</div></div></div>' +
-      (p.id_checked_at ? '<p class="muted small mt">ID checked by ' + esc(p.id_checked_by || 'staff') + ' on ' + fmtDate(p.id_checked_at) + '</p>' : '');
+      minutesHtml(batches || []) +
+      (p.id_checked_at ? '<p class="muted small mt">ID checked in store by ' + esc(p.id_checked_by || 'staff') + ' on ' + fmtDate(p.id_checked_at) +
+        (p.id_type ? ' (' + esc(p.id_type) + ')' : '') + '</p>' : '');
   }
 
   // ------------------------------------------------------------------ add to account
   function productsHtml() {
     var groups = [['offer', 'Special offers'], ['session', 'Single sessions (added as minutes)'], ['package', 'Minute packs'], ['unlimited', 'Unlimited']];
-    return groups.map(function (g) {
+    return existingMinutesCard() + groups.map(function (g) {
       var items = state.products.filter(function (p) { return p.category === g[0]; });
       var manage = (g[0] === 'offer' && isAdmin()) ? ' <button class="link-btn small" data-action="offers">Manage offers</button>' : '';
       if (!items.length) return g[0] === 'offer' && isAdmin() ? '<div class="section-label">Special offers' + manage + '</div><div class="empty">All offers are hidden.</div>' : '';
@@ -411,6 +444,64 @@
         return '<button class="product" data-action="buy" data-id="' + p.id + '"><div class="p-name">' + esc(p.name) + '</div><div class="p-price">' + money(p.price) + '</div></button>';
       }).join('') + '</div>';
     }).join('');
+  }
+
+  function existingMinutesCard() {
+    return '<div class="section-label">Existing minutes</div><div class="products">' +
+      '<button class="product existing" data-action="existing-minutes"><div class="p-name">Add existing minutes</div>' +
+      '<div class="p-price">Any amount</div><div class="p-cat">No charge · minutes the customer already has</div></button></div>';
+  }
+
+  function openExistingMinutes() {
+    var c = state.customer;
+    var t = new Date();
+    var oldest = new Date(t.getFullYear() - 1, t.getMonth(), t.getDate() + 1);
+    openModal('Add existing minutes – ' + c.name,
+      '<form data-form="existing-minutes"><p class="muted mb">For minutes the customer already has, for example from the old system or a paper card. ' +
+      'No payment is taken. Minutes expire 12 months after the date they were bought.</p>' +
+      '<div class="form-grid"><label class="field"><span>Minutes</span><input type="number" name="minutes" min="1" max="5000" step="1" required placeholder="e.g. 45"></label>' +
+      '<label class="field"><span>Date bought</span><input type="date" name="bought_on" value="' + isoDate(t) + '" min="' + isoDate(oldest) + '" max="' + isoDate(t) + '" required></label></div>' +
+      '<p class="muted small" data-expiry-preview></p>' +
+      '<div class="error-text" data-error></div><div class="form-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
+      '<button class="btn" type="submit">Add minutes</button></div></form>');
+    updateExpiryPreview(topModal().querySelector('form'));
+  }
+
+  function updateExpiryPreview(f) {
+    var el = f.querySelector('[data-expiry-preview]');
+    if (!el) return;
+    var v = f.bought_on.value;
+    if (!v) { el.textContent = ''; return; }
+    var d = new Date(v + 'T12:00:00');
+    var e = new Date(d.getFullYear() + 1, d.getMonth(), d.getDate());
+    if (e.getMonth() !== d.getMonth()) e = new Date(d.getFullYear() + 1, d.getMonth() + 1, 0);
+    el.textContent = 'These minutes will expire on ' + e.toLocaleDateString('en-GB') + '.';
+  }
+
+  async function openBackups() {
+    try {
+      var r = await api('/api/backups');
+      closeAllModals();
+      openModal('Backups',
+        '<p class="muted mb">Every ' + r.every_days + ' days the system saves all data (customers, minutes, sales, sessions, waiting list, staff and activity) ' +
+        'to an Excel file. The newest ' + r.keep + ' are kept. Download one regularly and keep it somewhere safe, away from this system.</p>' +
+        '<form data-form="backup-email" class="backup-email"><div class="section-label">Email each weekly backup to</div>' +
+        '<div class="row-inline"><input type="email" name="email_to" value="' + esc(r.email_to) + '" placeholder="Leave blank to stop emails">' +
+        '<button class="btn btn-ghost" type="submit">Save</button>' +
+        '<button class="btn btn-ghost" type="button" data-action="backup-email-now">Email latest backup now</button></div>' +
+        (r.email_ready ? '' : '<div class="alert warn mt">Emails can\'t be sent until the email account is set up in More → Email &amp; SMS settings.</div>') +
+        (r.last_email ? '<div class="small mt ' + (r.last_email_ok ? 'ok-text' : 'error-text') + '">Last email: ' + esc(r.last_email) + '</div>' : '') +
+        '<div class="error-text" data-error></div></form>' +
+        '<div class="form-actions mb"><button class="btn" data-action="backup-now">Back up now</button></div>' +
+        (r.backups.length ? '<table class="data"><thead><tr><th>Backup</th><th>Made</th><th>Size</th><th></th></tr></thead><tbody>' +
+          r.backups.map(function (b) {
+            return '<tr><td>' + (b.name.indexOf('_manual') > 0 ? 'Manual' : 'Weekly') + '</td>' +
+              '<td>' + new Date(b.created * 1000).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) + '</td>' +
+              '<td class="muted">' + Math.max(1, Math.round(b.size / 1024)) + ' KB</td>' +
+              '<td><a class="btn btn-sm btn-ghost" href="/api/backups/' + encodeURIComponent(b.name) + '" download>Download</a></td></tr>';
+          }).join('') + '</tbody></table>' : '<div class="empty">No backups yet.</div>'),
+        { wide: true, noFocus: true });
+    } catch (e) { fail(e); }
   }
 
   async function openOffers() {
@@ -686,9 +777,28 @@
         openUseMinutes(c, state.pendingBed);
       } catch (e) { fail(e); }
     },
-    'id-check': async function () {
-      try { await api('/api/customers/' + state.customer.id + '/id-check', { method: 'POST' }); toast('ID check recorded'); openCustomer(state.customer.id); loadSignups(); }
-      catch (e) { fail(e); }
+    'id-check': function () {
+      var c = state.customer;
+      var age = ageFrom(c.dob);
+      openModal('ID check in store – ' + c.name,
+        '<form data-form="id-check"><p class="muted mb">Check the customer\'s photo ID. They must be 18 or over to use a sunbed.' +
+        (c.dob ? ' Date of birth on file: <b>' + ukDate(c.dob) + '</b> (age ' + age + ') – make sure it matches the ID.' : ' Add their date of birth with Edit after the check.') + '</p>' +
+        (age !== null && age < 18 ? '<div class="alert bad">Date of birth on file says this customer is under 18.</div>' : '') +
+        '<label class="field"><span>ID seen</span>' + idTypeSelect('id_type') + '</label>' +
+        '<div class="error-text" data-error></div><div class="form-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
+        '<button class="btn" type="submit">ID checked – customer is 18+</button></div></form>', { noFocus: true });
+    },
+    'existing-minutes': function () { openExistingMinutes(); },
+    backups: openBackups,
+    'backup-email-now': async function (el) {
+      el.disabled = true; el.textContent = 'Sending…';
+      try { var r = await api('/api/backups/email-latest', { method: 'POST' }); toast(r.message); openBackups(); }
+      catch (e) { fail(e); openBackups(); }
+    },
+    'backup-now': async function (el) {
+      el.disabled = true; el.textContent = 'Backing up…';
+      try { await api('/api/backups', { method: 'POST' }); toast('Backup made'); openBackups(); }
+      catch (e) { fail(e); el.disabled = false; el.textContent = 'Back up now'; }
     },
     'set-pin': function () {
       openModal('Set PIN for ' + state.customer.name,
@@ -811,6 +921,22 @@
       toast(minutes + (minutes === 1 ? ' minute' : ' minutes') + ' started');
       loadRooms(true);
     },
+    'backup-email': async function (f) {
+      await api('/api/backups/settings', { body: { email_to: f.email_to.value.trim() } });
+      toast(f.email_to.value.trim() ? 'Weekly backups will be emailed to ' + f.email_to.value.trim() : 'Backup emails turned off');
+      openBackups();
+    },
+    'id-check': async function (f) {
+      await api('/api/customers/' + state.customer.id + '/id-check', { body: { id_type: f.id_type.value } });
+      toast('ID check recorded');
+      openCustomer(state.customer.id);
+      loadSignups();
+    },
+    'existing-minutes': async function (f) {
+      var r = await api('/api/customers/' + state.customer.id + '/existing-minutes', { body: { minutes: Number(f.minutes.value), bought_on: f.bought_on.value } });
+      toast(r.message);
+      openCustomer(state.customer.id);
+    },
     'set-pin': async function (f) {
       await api('/api/customers/' + state.customer.id + '/pin', { body: { pin: f.pin.value } });
       toast('PIN saved');
@@ -919,6 +1045,7 @@
   });
 
   document.addEventListener('change', function (e) {
+    if (e.target.name === 'bought_on') updateExpiryPreview(e.target.closest('form'));
     if (e.target.matches('[data-report-date]')) loadReport(e.target.value);
   });
 

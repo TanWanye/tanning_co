@@ -287,3 +287,20 @@ table.data th { color: var(--muted); font-weight: 600; font-size: .78rem; text-t
 .product.offer:hover { border-color: var(--brand); }
 .offer-badge { position: absolute; top: 9px; left: 12px; font-size: .68rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #1b1009; background: var(--gold); padding: 2px 8px; border-radius: 999px; }
 .section-label .link-btn { text-transform: none; letter-spacing: 0; margin-left: 8px; }
+
+/* minutes expiry, existing minutes, ID check */
+.minutes-table td.expiring { color: var(--busy); font-weight: 650; }
+.minutes-table tr.expired-row td { color: var(--faint); text-decoration: line-through; }
+.product.existing { border-style: dashed; }
+.id-check-box { display: grid; grid-template-columns: 1fr 200px; gap: 12px; align-items: center; background: rgba(52, 211, 153, .07);
+  border: 1px solid rgba(52, 211, 153, .35); border-radius: 12px; padding: 10px 12px; margin: 4px 0 12px; }
+.id-check-box .field { margin: 0; }
+.id-check-toggle { margin: 0; }
+.id-btn { border-color: rgba(52, 211, 153, .5); color: var(--free); }
+@media (max-width: 860px) { .id-check-box { grid-template-columns: 1fr; } }
+
+.backup-email { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 14px; }
+.backup-email .section-label { margin-top: 0; }
+.row-inline { display: flex; gap: 8px; flex-wrap: wrap; }
+.row-inline input { flex: 1; min-width: 220px; }
+.ok-text { color: var(--free); }

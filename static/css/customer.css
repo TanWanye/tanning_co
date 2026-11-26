@@ -98,3 +98,5 @@ input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px r
 @media (max-width: 420px) {
   .two, .choice-row { grid-template-columns: 1fr; }
 }
+
+.expiry-note { margin-top: 10px; display: inline-block; background: #fff1e6; color: #8a3b0a; border-radius: 999px; padding: 4px 12px; font-size: .86rem; font-weight: 600; }

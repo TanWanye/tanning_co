@@ -12,9 +12,9 @@ Staff bed board, customer accounts, minutes, reports and campaigns for the Wyken
 
 * **Staff must sign in.** Each person has their own account. Every API route is closed unless
   signed in. There are two roles:
-  * **Staff**: bed board, customers, sales, daily report.
-  * **Manager (admin)**: everything else too: campaigns, import/export, deleting customers,
-    email/SMS settings, staff accounts and the activity log.
+  * **Staff**: bed board, customers, sales, daily report. No delete button.
+  * **Manager (admin)**: everything else too: campaigns, import/export, backups, special offers,
+    deleting customers, email/SMS settings, staff accounts and the activity log.
 * **Customers can only see their own account.** They use their mobile number + their own PIN.
   The old default PIN `1234` no longer works. Existing customers need staff to set a PIN
   (Customer → *Set PIN*).
@@ -78,6 +78,43 @@ recommended for that skin type.
   there's a "next free bed" option. A customer can also be added from their profile. Everyone waiting
   shows in the Waiting list panel, which turns green when their bed (or any bed) is free. Starting
   their session removes them from the list.
+
+## Minutes expire after 12 months
+
+* Every purchase is stored as its own lot of minutes with an expiry date: **12 months** after it was bought.
+  Unlimited weekly/monthly packages expire with the package (7 / 30 days).
+* Minutes are used **soonest-expiring first**. The customer profile shows "Next to expire" and a
+  "Minutes by expiry date" table. Customers see their next expiry date on the `/customer` page.
+* Expired minutes are removed automatically (checked hourly and whenever a customer is opened) and
+  logged in the Activity log.
+* **Upgrading:** balances that existed before this version are carried over and expire 12 months from
+  the day the new version first starts.
+* **Existing minutes:** in *Add courses to account* → *Add existing minutes*, staff can add any number of
+  minutes a customer already has (for example from a paper card), with the date they were bought.
+  No charge is taken, the 12-month expiry runs from that date, and it's recorded in the Activity log.
+
+## In-store ID check
+
+* The *New customer* form has a **Photo ID checked in store** box with the type of ID seen. The date of
+  birth from the ID is required when it's ticked, and under-18s can't be saved.
+* Customers without a check show an **ID check in store** button on their profile.
+
+## Weekly backups (Excel)
+
+* Every 7 days the app saves **all data** to an Excel file: customers, minutes (with expiry), sales,
+  sessions, waiting list, products, staff (no passwords) and the activity log. Passwords, PINs and
+  email/SMS secrets are never included.
+* Managers: **More → Backups (Excel)** to download any backup or make one now. The newest 12 are kept.
+* Files are saved in a `backups` folder next to the database (`/var/data/backups` on a Render disk), so
+  they're lost if the disk is lost. **Download one regularly and keep it somewhere else.**
+* Settings (optional): `BACKUP_DIR`, `BACKUP_KEEP` (default 12), `BACKUP_EVERY_DAYS` (default 7).
+* **Emailed weekly:** each automatic backup is emailed as an attachment to **wkinsella1908@gmail.com**
+  (change or clear the address under More → Backups; "Email latest backup now" sends one straight away).
+  It uses the email account in More → Email & SMS settings. For a Gmail sending account, turn on 2-step
+  verification and use an *app password* (smtp.gmail.com, port 587). The result of the last email is shown
+  on the Backups screen and in the Activity log.
+* The backup contains customers' personal details, so keep that inbox secure and delete old copies you
+  no longer need.
 
 ## Marketing (UK GDPR / PECR)
 

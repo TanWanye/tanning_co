@@ -104,7 +104,16 @@
     $('accName').textContent = 'Hi ' + me.name.split(' ')[0] + '!';
     $('accMinutes').textContent = me.remaining_minutes || 0;
     $('accVisits').textContent = me.visits || 0;
-    $('accLoyalty').textContent = me.loyalty || 0;
+    var note = $('accExpiryNote');
+    if (me.next_expiry_on) {
+      var d = new Date(me.next_expiry_on + 'T12:00:00').toLocaleDateString('en-GB');
+      $('accExpiry').textContent = d;
+      note.textContent = me.next_expiry_minutes + ' minutes expire on ' + d + ' – use them before then.';
+      note.classList.remove('hidden');
+    } else {
+      $('accExpiry').textContent = '–';
+      note.classList.add('hidden');
+    }
     $('accNumber').textContent = me.customer_number ? '#' + me.customer_number : '–';
     var pkg = $('accPackage');
     if (me.package_type && me.package_expires && new Date(me.package_expires) >= new Date(new Date().toDateString())) {
