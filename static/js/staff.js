@@ -131,14 +131,13 @@
     });
     $('board').innerHTML = visibleSites().map(function (site) {
       var beds = state.rooms.filter(function (r) { return r.shop === site; });
-      var c = { available: 0, occupied: 0, cleaning: 0 };
+      var c = { available: 0, occupied: 0 };
       beds.forEach(function (b) { c[b.status] = (c[b.status] || 0) + 1; });
       var info = SITES[site];
       return '<div class="site">' +
         '<div class="site-head"><h2>' + esc(site) + '</h2><div class="counts">' +
           '<span><i class="dot free"></i><b>' + c.available + '</b> free</span>' +
-          '<span><i class="dot busy"></i><b>' + c.occupied + '</b> in use</span>' +
-          '<span><i class="dot clean"></i><b>' + c.cleaning + '</b> cleaning</span></div></div>' +
+          '<span><i class="dot busy"></i><b>' + c.occupied + '</b> in use</span></div></div>' +
         '<div class="site-info">' + esc(info.address) + ' · ' + esc(info.phone) + ' · ' + esc(info.hours) + '</div>' +
         '<div class="beds">' + beds.map(bedTile).join('') + '</div></div>';
     }).join('');
@@ -146,7 +145,7 @@
   }
 
   function bedTile(r) {
-    var label = { available: 'Free', occupied: 'In use', cleaning: 'Cleaning' }[r.status] || r.status;
+    var label = { available: 'Free', occupied: 'In use' }[r.status] || r.status;
     var body = '', actions = '';
     if (r.status === 'occupied') {
       var start = utc(r.started_at);
@@ -155,13 +154,16 @@
         '<div class="countdown" data-end="' + end + '">--:--</div>';
       actions = '<button class="btn btn-sm" data-action="finish" data-room="' + r.id + '">Finish</button>' +
         '<button class="btn btn-sm btn-ghost" data-action="waitlist" data-room="' + r.id + '">Waiting list</button>';
-    } else if (r.status === 'cleaning') {
-      body = '<div class="bed-free-note">Needs cleaning</div>';
-      actions = '<button class="btn btn-sm" data-action="clean" data-room="' + r.id + '">Mark clean</button>' +
-        '<button class="btn btn-sm btn-ghost" data-action="waitlist" data-room="' + r.id + '">Waiting list</button>';
     } else {
-      body = '<div class="bed-free-note">Ready</div>';
-      actions = '<button class="btn btn-sm" data-action="start-bed" data-room="' + r.id + '">Start session</button>';
+      var next = nextWaiting(r);
+      if (next) {
+        body = '<div class="bed-free-note">Next: <b>' + esc(next.customer_name) + '</b> · ' + next.minutes + ' min</div>';
+        actions = '<button class="btn btn-sm" data-action="wl-start" data-id="' + next.id + '" data-room="' + r.id + '">Start ' + esc(firstName(next.customer_name)) + '</button>' +
+          '<button class="btn btn-sm btn-ghost" data-action="start-bed" data-room="' + r.id + '">Someone else</button>';
+      } else {
+        body = '<div class="bed-free-note">Ready</div>';
+        actions = '<button class="btn btn-sm" data-action="start-bed" data-room="' + r.id + '">Start session</button>';
+      }
     }
     var waiting = state.waitlist.filter(function (w) { return w.room_id === r.id; }).length;
     return '<div class="bed ' + esc(r.status) + '">' +
@@ -170,6 +172,17 @@
       body + (waiting ? '<div class="waiting-badge">' + waiting + ' waiting</div>' : '') +
       '<div class="bed-actions">' + actions + '</div></div>';
   }
+
+  function firstName(n) { return String(n || '').trim().split(/\s+/)[0]; }
+
+  // The person waiting longest for this bed, or for any bed at this salon, who is ready for a one-press start
+  function nextWaiting(r) {
+    var ready = state.waitlist.filter(function (w) { return w.customer_id && w.minutes; });
+    return ready.find(function (w) { return w.room_id === r.id; }) ||
+           ready.find(function (w) { return !w.room_id && w.shop === r.shop; }) || null;
+  }
+
+  function payLabel(w) { return w.use_package ? 'package' : 'minutes'; }
 
   function tick() {
     var now = new Date();
@@ -236,12 +249,13 @@
         if (any) freeBed = any.id;
       }
       var mins = Math.max(0, Math.round((Date.now() - utc(w.created_at)) / 60000));
+      var oneTouch = w.customer_id && w.minutes;
       return '<div class="list-item' + (freeBed ? ' ready' : '') + '"><div class="row"><b>' + esc(w.customer_name) + '</b>' +
-        '<span class="muted small">' + mins + ' min</span></div>' +
-        '<div class="muted small">' + esc(target) + '</div>' +
+        '<span class="muted small">waiting ' + mins + ' min</span></div>' +
+        '<div class="muted small">' + esc(target) + (oneTouch ? ' · <b>' + w.minutes + ' min</b> (' + payLabel(w) + ')' : '') + '</div>' +
         (freeBed ? '<div class="ready-text">Bed free now</div>' : '') +
         '<div class="actions">' +
-        (w.customer_id ? '<button class="btn btn-sm' + (freeBed ? '' : ' btn-ghost') + '" data-action="waitlist-start" data-customer="' + w.customer_id + '" data-room="' + (freeBed || '') + '">Start session</button>' : '') +
+        (oneTouch && freeBed ? '<button class="btn btn-sm" data-action="wl-start" data-id="' + w.id + '" data-room="' + freeBed + '">Start</button>' : '') +
         '<button class="btn btn-sm btn-danger" data-action="waitlist-remove" data-id="' + w.id + '">Remove</button></div></div>';
     }).join('') : '<div class="empty">No one waiting</div>';
   }
@@ -391,10 +405,18 @@
     if (age !== null && age < 18) alerts += '<div class="alert bad"><b>Under 18:</b> by law this customer must not use a sunbed.</div>';
     if (!p.id_checked_at && p.source === 'self') alerts += '<div class="alert warn">Signed up online – check photo ID and confirm the date of birth before the first session.</div>';
 
-    var pkg = p.package_type ? 'Unlimited ' + esc(p.package_type) + '<div class="muted small">' + daysLeft(p.package_expires) + ' days left</div>' : '<span class="muted">None</span>';
+    var pkg = p.package_active ? 'Unlimited ' + esc(p.package_type) +
+      '<div class="muted small">15 min a day · ends ' + ukDate(p.package_expires) + '</div>' +
+      '<div class="small ' + (p.package_left_today ? 'ok-text' : 'error-text') + '">Today: ' + p.package_left_today + ' min left</div>' : '<span class="muted">None</span>';
+    var canStart = (p.remaining_minutes || 0) > 0 || (p.package_active && p.package_left_today > 0);
 
+    var todayIso = isoDate(new Date());
     var hist = history.length ? history.map(function (o) {
-      return '<div class="h-row"><b>' + esc(o.items) + '</b><br><span class="muted small">' + fmtDate(o.created_at) + ' · ' + money(o.total) + ' · ' + esc(o.payment_method) + (o.shop ? ' · ' + esc(o.shop) : '') + '</span></div>';
+      var isPkg = /unlimited/i.test(o.items || '');
+      var exp = o.expires_on ? '<span class="' + (o.expires_on <= todayIso ? 'expired-text' : 'expiry-text') + '">' +
+        (o.expires_on <= todayIso ? (isPkg ? 'Package ended ' : 'Expired ') : (isPkg ? 'Package ends ' : 'Expires ')) + ukDate(o.expires_on) + '</span>' : '';
+      return '<div class="h-row"><b>' + esc(o.items) + '</b><br><span class="muted small">' + fmtDate(o.created_at) + ' · ' + money(o.total) + ' · ' + esc(o.payment_method) + (o.shop ? ' · ' + esc(o.shop) : '') + '</span>' +
+        (exp ? '<br><span class="small">' + exp + '</span>' : '') + '</div>';
     }).join('') : '<div class="empty">No purchases yet</div>';
     var use = usage.length ? usage.map(function (u) {
       return '<div class="h-row">' + esc(u.room_name) + ' · <b>' + (u.minutes || 0) + ' min</b><br><span class="muted small">' + fmtDateTime(u.created_at) + '</span></div>';
@@ -412,9 +434,9 @@
           (p.next_expiry_on ? p.next_expiry_minutes + ' min<div class="muted small">on ' + ukDate(p.next_expiry_on) + '</div>' : '<span class="muted">—</span>') + '</div></div>' +
       '</div>' +
       '<div class="profile-actions">' +
-        '<button class="btn" data-action="use-minutes"' + ((p.remaining_minutes || 0) > 0 ? '' : ' disabled title="No minutes left"') + '>Start session (use minutes)</button>' +
+        '<button class="btn" data-action="use-minutes"' + (canStart ? '' : ' disabled title="No minutes or package time left today"') + '>Start session</button>' +
         '<button class="btn" data-action="add-to-account">Add courses to account</button>' +
-        '<button class="btn btn-ghost" data-action="wait-pick">Add to waiting list</button>' +
+        '<button class="btn btn-ghost" data-action="wait-pick"' + (canStart ? '' : ' disabled') + '>Add to waiting list</button>' +
         '<button class="btn btn-ghost" data-action="edit-customer">Edit</button>' +
         (p.id_checked_at ? '' : '<button class="btn btn-ghost id-btn" data-action="id-check">ID check in store</button>') +
         '<button class="btn btn-ghost" data-action="set-pin">' + (p.has_pin ? 'Reset PIN' : 'Set PIN') + '</button>' +
@@ -441,7 +463,9 @@
             '<div class="p-price">' + money(p.price) + '</div>' +
             '<div class="p-cat">' + p.minutes + ' minutes added' + (p.note ? ' + free gift' : '') + '</div></button>';
         }
-        return '<button class="product" data-action="buy" data-id="' + p.id + '"><div class="p-name">' + esc(p.name) + '</div><div class="p-price">' + money(p.price) + '</div></button>';
+        var sub = p.code === 'UNL_WEEK' ? '15 min a day · 7 days' : p.code === 'UNL_MONTH' ? '15 min a day · 1 month' : '';
+        return '<button class="product" data-action="buy" data-id="' + p.id + '"><div class="p-name">' + esc(p.name) + '</div><div class="p-price">' + money(p.price) + '</div>' +
+          (sub ? '<div class="p-cat">' + sub + '</div>' : '') + '</button>';
       }).join('') + '</div>';
     }).join('');
   }
@@ -558,8 +582,7 @@
         return '<button type="button" data-action="pick-bed" data-room="' + r.id + '"' + (r.id === selected ? ' class="selected"' : '') + '>' +
           '<b>' + esc(shortBed(r.name)) + '</b><small>' + sub + '</small><small class="free-hint">Free</small></button>';
       }
-      var status = r.status === 'occupied' ? 'In use' + (minsLeft(r) !== null ? ' · ' + minsLeft(r) + ' min left' : '') :
-                   r.status === 'cleaning' ? 'Cleaning' : 'Free';
+      var status = r.status === 'occupied' ? 'In use' + (minsLeft(r) !== null ? ' · ' + minsLeft(r) + ' min left' : '') : 'Free';
       return '<button type="button" class="busy" data-action="wait-bed" data-room="' + r.id + '">' +
         '<b>' + esc(shortBed(r.name)) + '</b><small>' + sub + '</small><small>' + esc(status) + (waiting ? ' · ' + waiting + ' waiting' : '') + '</small>' +
         '<small class="wait-hint">+ Waiting list</small></button>';
@@ -578,20 +601,38 @@
 
   function openUseMinutes(c, roomId) {
     state.customer = c;
-    var max = c.remaining_minutes || 0;
-    var quick = [3, 6, 9, 12, 15].filter(function (m) { return m <= max; });
+    var bal = c.remaining_minutes || 0;
+    var pkgLeft = c.package_active ? (c.package_left_today || 0) : 0;
+    var usePkg = pkgLeft > 0;
     closeAllModals();
-    var m = openModal('Start session – ' + c.name,
-      '<form data-form="use-minutes" data-customer="' + c.id + '">' +
-      '<p class="muted mb"></p>' +
-      '<div class="section-label">Minutes (' + max + ' available)</div>' +
-      '<div class="quick-mins">' + quick.map(function (q) { return '<button type="button" class="btn btn-sm btn-ghost" data-action="quick-min" data-min="' + q + '">' + q + ' min</button>'; }).join('') + '</div>' +
-      '<label class="field"><input type="number" name="minutes" min="1" max="' + Math.min(max, 30) + '" required placeholder="Minutes"></label>' +
-      '<div class="section-label">Bed</div>' + bedPicker(roomId, 'start') +
+    var pay = '';
+    if (c.package_active || bal > 0) {
+      pay = '<div class="section-label">Pay with</div><div class="pay-choice">' +
+        (c.package_active ? '<label class="check"><input type="radio" name="pay" value="package"' + (usePkg ? ' checked' : '') + (pkgLeft ? '' : ' disabled') + '>' +
+          '<span><b>Unlimited ' + esc(c.package_type) + '</b> – ' + pkgLeft + ' of 15 min left today</span></label>' : '') +
+        (bal > 0 ? '<label class="check"><input type="radio" name="pay" value="minutes"' + (usePkg ? '' : ' checked') + '>' +
+          '<span><b>Minutes balance</b> – ' + bal + ' min</span></label>' : '') + '</div>';
+    }
+    openModal('Start session – ' + c.name,
+      '<form data-form="use-minutes" data-customer="' + c.id + '">' + pay +
+      '<div class="section-label">Minutes</div>' +
+      '<div class="quick-mins">' + [3, 6, 9, 12, 15].map(function (q) { return '<button type="button" class="btn btn-sm btn-ghost" data-action="quick-min" data-min="' + q + '">' + q + ' min</button>'; }).join('') + '</div>' +
+      '<label class="field"><input type="number" name="minutes" min="1" max="30" required placeholder="Minutes"></label>' +
+      '<div class="section-label">Bed <span class="muted small">– a free bed starts now; a bed in use adds them to its waiting list, ready to start with one press</span></div>' +
+      bedPicker(roomId, 'start') +
       '<input type="hidden" name="room" value="' + (roomId || '') + '">' +
       '<div class="error-text" data-error></div>' +
       '<div class="form-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Cancel</button><button class="btn" type="submit">Start session</button></div></form>');
-    m.querySelector('p.muted').textContent = c.name + ' has ' + max + ' minutes left.';
+  }
+
+  // minutes + payment chosen in the open Start session form (for waiting-list entries)
+  function sessionChoice() {
+    var f = topModal() && topModal().querySelector('form[data-form=use-minutes]');
+    if (!f) return null;
+    var minutes = Number(f.minutes.value);
+    if (!minutes) { f.querySelector('[data-error]').textContent = 'Enter the minutes first, then pick the bed they want'; f.minutes.focus(); return null; }
+    var pay = f.querySelector('input[name=pay]:checked');
+    return { minutes: minutes, use_package: pay ? pay.value === 'package' : null };
   }
 
   function openStartBed(roomId) {
@@ -733,25 +774,24 @@
         openOffers();
       } catch (e) { fail(e); }
     },
-    'wait-pick': function () {
-      openModal('Waiting list – ' + state.customer.name, '<p class="muted mb">Pick the bed they want, or the next free bed.</p>' + bedPicker(null, 'wait'), { wide: true, noFocus: true });
-    },
+    'wait-pick': function () { openUseMinutes(state.customer, null); },
     'wait-bed': function (el) {
-      var c = state.customer;
-      if (!c) return;
-      addToWaitlist({ room_id: Number(el.dataset.room), customer_id: c.id, customer_name: c.name });
+      var c = state.customer, ch = sessionChoice();
+      if (!c || !ch) return;
+      addToWaitlist({ room_id: Number(el.dataset.room), customer_id: c.id, customer_name: c.name, minutes: ch.minutes, use_package: ch.use_package });
     },
     'wait-any': function (el) {
-      var c = state.customer;
-      if (!c) return;
-      addToWaitlist({ room_id: null, shop: el.dataset.shop, customer_id: c.id, customer_name: c.name });
+      var c = state.customer, ch = sessionChoice();
+      if (!c || !ch) return;
+      addToWaitlist({ room_id: null, shop: el.dataset.shop, customer_id: c.id, customer_name: c.name, minutes: ch.minutes, use_package: ch.use_package });
     },
-    'waitlist-start': async function (el) {
+    'wl-start': async function (el) {
+      el.disabled = true;
       try {
-        var c = await api('/api/customers/' + el.dataset.customer);
-        if ((c.remaining_minutes || 0) < 1) { toast(c.name + ' has no minutes left – add courses first', true); openCustomer(c.id); return; }
-        openUseMinutes(c, el.dataset.room ? Number(el.dataset.room) : null);
+        var r = await api('/api/waitlist/' + el.dataset.id + '/start', { body: { room_id: el.dataset.room ? Number(el.dataset.room) : null } });
+        toast(r.message);
       } catch (e) { fail(e); }
+      loadRooms(true); loadWaitlist(true);
     },
     buy: function (el) { buyProduct(Number(el.dataset.id)); },
     'use-minutes': function () { openUseMinutes(state.customer, null); },
@@ -767,9 +807,9 @@
     'pick-customer-for-bed': async function (el) {
       try {
         var c = await api('/api/customers/' + el.dataset.id);
-        if ((c.remaining_minutes || 0) < 1) {
+        if ((c.remaining_minutes || 0) < 1 && !(c.package_active && c.package_left_today > 0)) {
           state.customer = c;
-          toast(c.name + ' has no minutes left – add some to their account first', true);
+          toast(c.name + ' has no minutes or package time left today – add courses first', true);
           openCustomer(c.id);
           return;
         }
@@ -814,12 +854,8 @@
     },
     finish: async function (el) {
       var r = state.rooms.find(function (x) { return x.id === Number(el.dataset.room); });
-      if (!await confirmBox('Finish session', 'Finish <b>' + esc(r ? r.customer_name : '') + '</b>\'s session on ' + esc(r ? r.name : 'this bed') + '? The bed will be marked for cleaning.', 'Finish')) return;
+      if (!await confirmBox('Finish session', 'Finish <b>' + esc(r ? r.customer_name : '') + '</b>\'s session on ' + esc(r ? r.name : 'this bed') + '? The bed will be free again.', 'Finish')) return;
       try { await api('/api/rooms/' + el.dataset.room + '/finish', { method: 'POST' }); loadRooms(true); }
-      catch (e) { fail(e); }
-    },
-    clean: async function (el) {
-      try { await api('/api/rooms/' + el.dataset.room + '/clean', { method: 'POST' }); loadRooms(true); }
       catch (e) { fail(e); }
     },
     waitlist: function (el) { openWaitlist(Number(el.dataset.room)); },
@@ -913,9 +949,11 @@
     },
     'use-minutes': async function (f) {
       var minutes = Number(f.minutes.value), room = Number(f.room.value);
-      if (!room) throw new Error('Choose a bed');
+      if (!room) throw new Error('Choose a free bed – or tap a bed in use to add them to its waiting list');
       if (!minutes) throw new Error('Enter the number of minutes');
-      await api('/api/use-minutes', { body: { customer_id: Number(f.dataset.customer), minutes: minutes, room_id: room } });
+      var pay = f.querySelector('input[name=pay]:checked');
+      await api('/api/use-minutes', { body: { customer_id: Number(f.dataset.customer), minutes: minutes, room_id: room,
+                                               use_package: pay ? pay.value === 'package' : null } });
       closeAllModals();
       state.pendingBed = null;
       toast(minutes + (minutes === 1 ? ' minute' : ' minutes') + ' started');

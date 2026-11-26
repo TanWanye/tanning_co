@@ -304,3 +304,9 @@ table.data th { color: var(--muted); font-weight: 600; font-size: .78rem; text-t
 .row-inline { display: flex; gap: 8px; flex-wrap: wrap; }
 .row-inline input { flex: 1; min-width: 220px; }
 .ok-text { color: var(--free); }
+
+/* expiry on purchases, payment choice */
+.expiry-text { color: var(--gold); }
+.expired-text { color: var(--faint); text-decoration: line-through; }
+.pay-choice { display: grid; gap: 2px; margin-bottom: 4px; }
+.pay-choice input:disabled + span { opacity: .5; }

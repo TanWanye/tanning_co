@@ -116,15 +116,18 @@
     }
     $('accNumber').textContent = me.customer_number ? '#' + me.customer_number : '–';
     var pkg = $('accPackage');
-    if (me.package_type && me.package_expires && new Date(me.package_expires) >= new Date(new Date().toDateString())) {
-      pkg.textContent = 'Unlimited ' + me.package_type + ' until ' + new Date(me.package_expires).toLocaleDateString('en-GB');
+    function uk(iso) { var p = String(iso).slice(0, 10).split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
+    if (me.package_active) {
+      pkg.textContent = 'Unlimited ' + me.package_type + ': 15 min a day until ' + uk(me.package_expires) +
+        ' · ' + me.package_left_today + ' min left today';
       pkg.classList.remove('hidden');
     } else { pkg.classList.add('hidden'); }
     var h = await fetch('/api/customer/my-history', { credentials: 'same-origin' });
     var rows = h.ok ? await h.json() : [];
     $('accHistory').innerHTML = rows.length ? rows.map(function (o) {
       return '<div class="history-item"><b>' + esc(o.items || 'Purchase') + '</b><br><small>' +
-        esc(new Date(String(o.created_at).replace(' ', 'T') + 'Z').toLocaleDateString('en-GB')) + ' · £' + (Number(o.total) || 0).toFixed(2) + '</small></div>';
+        esc(new Date(String(o.created_at).replace(' ', 'T') + 'Z').toLocaleDateString('en-GB')) + ' · £' + (Number(o.total) || 0).toFixed(2) +
+        (o.expires_on ? ' · ' + (/unlimited/i.test(o.items || '') ? 'package ends ' : 'expires ') + uk(o.expires_on) : '') + '</small></div>';
     }).join('') : '<p class="hint">Nothing yet.</p>';
     show('account');
     return true;

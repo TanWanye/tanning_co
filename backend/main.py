@@ -102,8 +102,8 @@ PRICE_LIST = [
     ("PACK_60", "60 MIN Pack", 39.00, "package", 60, None, 1),
     ("PACK_100", "100 MIN Pack", 56.00, "package", 100, None, 1),
     ("PACK_120", "120 MIN Pack", 61.00, "package", 120, None, 1),
-    ("UNL_WEEK", "Unlimited Weekly", 46.00, "unlimited", 105, None, 1),
-    ("UNL_MONTH", "Unlimited Monthly", 79.00, "unlimited", 450, None, 1),
+    ("UNL_WEEK", "Unlimited Weekly", 46.00, "unlimited", 0, None, 1),     # 15 min a day for 7 days
+    ("UNL_MONTH", "Unlimited Monthly", 79.00, "unlimited", 0, None, 1),   # 15 min a day for 1 month
 ]
 
 
@@ -215,6 +215,33 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
         add_column(c, "waitlist", "shop", "TEXT")
+        add_column(c, "waitlist", "minutes", "INTEGER")
+        add_column(c, "waitlist", "use_package", "INTEGER DEFAULT 0")
+        add_column(c, "orders", "expires_on", "TEXT")
+        add_column(c, "rooms", "paid_with", "TEXT")
+        add_column(c, "sessions", "paid_with", "TEXT")
+        c.execute('''CREATE TABLE IF NOT EXISTS package_uses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL,
+            used_on TEXT NOT NULL,
+            minutes INTEGER NOT NULL,
+            room_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute("CREATE INDEX IF NOT EXISTS idx_package_uses ON package_uses (customer_id, used_on)")
+        # Beds are no longer marked for cleaning
+        c.execute("""UPDATE rooms SET status = 'available', customer_name = NULL, customer_id = NULL,
+                     remaining_minutes = 0, started_at = NULL, prepaid = 0 WHERE status = 'cleaning'""")
+        # Unlimited packages no longer add minutes: remove minutes they added in earlier versions
+        old = c.execute("""SELECT DISTINCT customer_id FROM minute_batches
+                           WHERE source IN ('Unlimited Weekly', 'Unlimited Monthly') AND minutes_left > 0""").fetchall()
+        c.execute("""UPDATE minute_batches SET minutes_left = 0, expired_at = ?
+                     WHERE source IN ('Unlimited Weekly', 'Unlimited Monthly') AND minutes_left > 0""", (now_str(),))
+        for r in old:
+            recalc_minutes(c, r["customer_id"])
+        # Expiry date shown against each purchase
+        c.execute("""UPDATE orders SET expires_on = (SELECT MAX(expires_on) FROM minute_batches WHERE order_id = orders.id)
+                     WHERE expires_on IS NULL""")
         c.execute('''CREATE TABLE IF NOT EXISTS sms_settings (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             account_sid TEXT, auth_token TEXT, from_number TEXT
@@ -418,6 +445,61 @@ def expire_due(c, customer_id=None):
         c.execute("INSERT INTO audit_log (username, action, detail, ip) VALUES (NULL, 'minutes_expired', ?, 'system')",
                   (f"customer #{cid}: {mins} min",))
     return sum(touched.values())
+
+
+PACKAGE_DAILY_MINUTES = 15
+
+
+def package_status(c, customer_id):
+    """Unlimited weekly/monthly package: active until its expiry date, up to 15 minutes a day."""
+    row = c.execute("SELECT package_type, package_expires FROM customers WHERE id = ?", (customer_id,)).fetchone()
+    t = today().isoformat()
+    active = bool(row and row["package_type"] and row["package_expires"] and row["package_expires"] > t)
+    used = 0
+    if active:
+        used = c.execute("SELECT COALESCE(SUM(minutes), 0) FROM package_uses WHERE customer_id = ? AND used_on = ?",
+                         (customer_id, t)).fetchone()[0]
+    return {"package_active": active,
+            "package_type": row["package_type"] if active else None,
+            "package_expires": row["package_expires"] if active else None,
+            "package_used_today": used if active else 0,
+            "package_left_today": max(0, PACKAGE_DAILY_MINUTES - used) if active else 0}
+
+
+def start_session(c, customer_id, room_id, minutes, use_package=None, who=""):
+    """Start a customer on a free bed, paid from their unlimited package (15 min a day) or their minutes."""
+    if minutes < 1 or minutes > 30:
+        raise HTTPException(400, "Minutes must be between 1 and 30")
+    expire_due(c, customer_id)
+    customer = c.execute("SELECT * FROM customers WHERE id = ?", (customer_id,)).fetchone()
+    if not customer:
+        raise HTTPException(404, "Customer not found")
+    room = c.execute("SELECT * FROM rooms WHERE id = ?", (room_id,)).fetchone()
+    if not room or room["status"] != "available":
+        raise HTTPException(400, "That bed isn't free")
+    pkg = package_status(c, customer_id)
+    if use_package is None:
+        use_package = pkg["package_active"] and pkg["package_left_today"] > 0
+    if use_package:
+        if not pkg["package_active"]:
+            raise HTTPException(400, f"{customer['name']} doesn't have an unlimited package running")
+        if minutes > pkg["package_left_today"]:
+            raise HTTPException(400, f"Unlimited package: {PACKAGE_DAILY_MINUTES} min a day. "
+                                     f"{customer['name']} has {pkg['package_left_today']} min left today")
+        c.execute("INSERT INTO package_uses (customer_id, used_on, minutes, room_name) VALUES (?, ?, ?, ?)",
+                  (customer_id, today().isoformat(), minutes, room["name"]))
+        paid = "package"
+    else:
+        if (customer["remaining_minutes"] or 0) < minutes:
+            raise HTTPException(400, f"Not enough minutes - {customer['name']} has {customer['remaining_minutes'] or 0}")
+        take_minutes(c, customer_id, minutes)
+        paid = "minutes"
+    c.execute("UPDATE customers SET visits = visits + 1 WHERE id = ?", (customer_id,))
+    c.execute("""UPDATE rooms SET status = 'occupied', customer_name = ?, customer_id = ?, prepaid = 1, paid_with = ?,
+                        remaining_minutes = ?, started_at = CURRENT_TIMESTAMP WHERE id = ?""",
+              (customer["name"], customer_id, paid, minutes, room_id))
+    c.execute("DELETE FROM waitlist WHERE customer_id = ?", (customer_id,))
+    return customer, room, paid
 
 
 def next_expiry(c, customer_id):
@@ -680,6 +762,11 @@ class UseMinutes(BaseModel):
     customer_id: int
     minutes: int
     room_id: int
+    use_package: Optional[bool] = None   # None = use the package if one is running and has time left today
+
+
+class WaitlistStart(BaseModel):
+    room_id: Optional[int] = None
 
 
 class OfferActive(BaseModel):
@@ -691,6 +778,8 @@ class WaitlistAdd(BaseModel):
     shop: Optional[str] = None
     customer_name: str
     customer_id: Optional[int] = None
+    minutes: Optional[int] = None      # session length, so Start is one press when the bed is free
+    use_package: Optional[bool] = None
 
 
 class EmailSettings(BaseModel):
@@ -912,6 +1001,7 @@ def get_customer(customer_id: int):
             raise HTTPException(404, "Customer not found")
         d = dict(row)
         d["next_expiry_minutes"], d["next_expiry_on"] = next_expiry(conn, customer_id)
+        d.update(package_status(conn, customer_id))
     return d
 
 
@@ -948,7 +1038,9 @@ def add_existing_minutes(customer_id: int, data: ExistingMinutes, request: Reque
         items = f"Existing minutes: {data.minutes} min (bought {bought.strftime('%d/%m/%Y')})"
         c.execute("""INSERT INTO orders (customer_id, total, discount, payment_method, items, shop, staff)
                      VALUES (?, 0, 0, 'Existing minutes', ?, NULL, ?)""", (customer_id, items, staff_name(request)))
-        add_minutes(c, customer_id, data.minutes, bought, expires, "existing", c.lastrowid)
+        oid = c.lastrowid
+        c.execute("UPDATE orders SET expires_on = ? WHERE id = ?", (expires.isoformat(), oid))
+        add_minutes(c, customer_id, data.minutes, bought, expires, "existing", oid)
     audit(request, "existing_minutes_added", f"#{customer_id} {cust['name']}: {data.minutes} min, bought {bought}, expires {expires}")
     return {"ok": True, "expires_on": expires.isoformat(),
             "message": f"{data.minutes} existing minutes added to {cust['name']} (expire {expires.strftime('%d/%m/%Y')})"}
@@ -1131,15 +1223,24 @@ def create_order(order: OrderCreate, request: Request):
                      WHERE id = ?""", (total, order.customer_id))
 
         t = today()
+        order_expires = None
         for name, _, qty, cat, mins, code in priced:
             if code in ("UNL_WEEK", "UNL_MONTH"):
-                # unlimited-package minutes run out with the package, not after 12 months
-                expires = t + timedelta(days=7 if code == "UNL_WEEK" else 30)
+                # Unlimited packages give 15 min a day (no minutes balance). A new package bought while one is
+                # running starts when the current one ends.
+                cur = c.execute("SELECT package_expires FROM customers WHERE id = ?", (order.customer_id,)).fetchone()
+                start = t
+                if cur and cur["package_expires"] and cur["package_expires"] > t.isoformat():
+                    start = date.fromisoformat(cur["package_expires"])
+                expires = start + timedelta(days=7 * qty) if code == "UNL_WEEK" else add_months(start, qty)
                 c.execute("UPDATE customers SET package_type = ?, package_expires = ? WHERE id = ?",
                           ("weekly" if code == "UNL_WEEK" else "monthly", expires.isoformat(), order.customer_id))
-                add_minutes(c, order.customer_id, mins * qty, t, expires, name, order_id)
             else:
-                add_minutes(c, order.customer_id, mins * qty, t, add_months(t, MINUTES_VALID_MONTHS), name, order_id)
+                expires = add_months(t, MINUTES_VALID_MONTHS)
+                add_minutes(c, order.customer_id, mins * qty, t, expires, name, order_id)
+            order_expires = max(order_expires or expires, expires)
+        if order_expires:
+            c.execute("UPDATE orders SET expires_on = ? WHERE id = ?", (order_expires.isoformat(), order_id))
     audit(request, "order_created", f"#{order_id} customer #{order.customer_id}: {items_str} £{total:.2f}")
     return {"order_id": order_id, "total": total, "message": "Order created"}
 
@@ -1179,18 +1280,9 @@ def cancel_queue(queue_id: int, request: Request):
     return {"message": "Removed from queue"}
 
 
-@app.post("/api/rooms/{room_id}/clean")
-def mark_clean(room_id: int, request: Request):
-    with db() as conn:
-        conn.execute("""UPDATE rooms SET status = 'available', customer_name = NULL, customer_id = NULL,
-                               remaining_minutes = 0, started_at = NULL, prepaid = 0
-                        WHERE id = ? AND status = 'cleaning'""", (room_id,))
-    return {"message": "Bed available"}
-
-
 @app.post("/api/rooms/{room_id}/finish")
 def finish_session(room_id: int, request: Request):
-    """End a session, log it and mark the bed for cleaning."""
+    """End a session, log it and free the bed."""
     with db() as conn:
         c = conn.cursor()
         room = c.execute("SELECT * FROM rooms WHERE id = ?", (room_id,)).fetchone()
@@ -1202,44 +1294,43 @@ def finish_session(room_id: int, request: Request):
         if not room["prepaid"] and minutes_used > 0:
             if room["customer_id"]:
                 take_minutes(c, room["customer_id"], minutes_used)
-        c.execute("INSERT INTO sessions (customer_name, customer_id, room_name, shop, minutes) VALUES (?, ?, ?, ?, ?)",
-                  (room["customer_name"], room["customer_id"], room["name"], shop_from_room(room["name"]), minutes_used))
-        c.execute("UPDATE rooms SET status = 'cleaning', prepaid = 0 WHERE id = ?", (room_id,))
+        c.execute("""INSERT INTO sessions (customer_name, customer_id, room_name, shop, minutes, paid_with)
+                     VALUES (?, ?, ?, ?, ?, ?)""",
+                  (room["customer_name"], room["customer_id"], room["name"], shop_from_room(room["name"]), minutes_used,
+                   room["paid_with"] or "minutes"))
+        c.execute("""UPDATE rooms SET status = 'available', customer_name = NULL, customer_id = NULL, remaining_minutes = 0,
+                            started_at = NULL, prepaid = 0, paid_with = NULL WHERE id = ?""", (room_id,))
     audit(request, "session_finished", f"{room['name']} ({room['customer_name']}, {minutes_used} min)")
     return {"message": "Session finished", "minutes": minutes_used}
 
 
 @app.post("/api/use-minutes")
 def use_minutes(data: UseMinutes, request: Request):
-    """Take minutes off a customer's balance and start them on a bed."""
-    if data.minutes < 1 or data.minutes > 30:
-        raise HTTPException(400, "Minutes must be between 1 and 30")
+    """Start a customer on a bed: minutes come off their package allowance or their balance."""
     with db() as conn:
-        c = conn.cursor()
-        expire_due(c, data.customer_id)
-        customer = c.execute("SELECT * FROM customers WHERE id = ?", (data.customer_id,)).fetchone()
-        if not customer:
-            raise HTTPException(404, "Customer not found")
-        if (customer["remaining_minutes"] or 0) < data.minutes:
-            raise HTTPException(400, "Not enough minutes")
-        room = c.execute("SELECT * FROM rooms WHERE id = ?", (data.room_id,)).fetchone()
-        if not room or room["status"] != "available":
-            raise HTTPException(400, "Bed not available")
-        take_minutes(c, data.customer_id, data.minutes)
-        c.execute("UPDATE customers SET visits = visits + 1 WHERE id = ?", (data.customer_id,))
-        c.execute("""UPDATE rooms SET status = 'occupied', customer_name = ?, customer_id = ?, prepaid = 1,
-                            remaining_minutes = ?, started_at = CURRENT_TIMESTAMP WHERE id = ?""",
-                  (customer["name"], data.customer_id, data.minutes, data.room_id))
-        c.execute("DELETE FROM waitlist WHERE customer_id = ?", (data.customer_id,))
-    audit(request, "bed_assigned", f"{room['name']} ← {customer['name']} ({data.minutes} min)")
-    return {"message": "Bed assigned", "minutes_used": data.minutes}
+        customer, room, paid = start_session(conn.cursor(), data.customer_id, data.room_id, data.minutes, data.use_package)
+    audit(request, "bed_assigned", f"{room['name']} ← {customer['name']} ({data.minutes} min, {paid})")
+    return {"message": "Bed assigned", "minutes_used": data.minutes, "paid_with": paid}
+
+
+def purchase_history(conn, customer_id, limit=30):
+    """Purchases with their expiry date, plus balances carried over from before expiry tracking."""
+    rows = [dict(o) for o in conn.execute(
+        """SELECT id, items, total, discount, payment_method, shop, staff, created_at, expires_on
+           FROM orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT ?""", (customer_id, limit)).fetchall()]
+    for b in conn.execute("""SELECT minutes_added, bought_on, expires_on FROM minute_batches
+                             WHERE customer_id = ? AND source = 'carried over'""", (customer_id,)).fetchall():
+        rows.append({"id": None, "items": f"Carried over balance: {b['minutes_added']} min", "total": 0, "discount": 0,
+                     "payment_method": "Carried over", "shop": None, "staff": None,
+                     "created_at": b["bought_on"] + " 00:00:00", "expires_on": b["expires_on"]})
+    rows.sort(key=lambda r: r["created_at"] or "", reverse=True)
+    return rows
 
 
 @app.get("/api/customer/{customer_id}/history")
 def customer_history(customer_id: int):
     with db() as conn:
-        rows = conn.execute("SELECT * FROM orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT 20", (customer_id,)).fetchall()
-    return [dict(o) for o in rows]
+        return purchase_history(conn, customer_id)
 
 
 @app.get("/api/customer/{customer_id}/bed-usage")
@@ -1254,7 +1345,7 @@ def customer_bed_usage(customer_id: int):
 def get_all_waitlist():
     """Everyone waiting, for a particular bed or for the next free bed at a salon."""
     with db() as conn:
-        rows = conn.execute("""SELECT w.id, w.room_id, w.customer_id, w.customer_name, w.created_at,
+        rows = conn.execute("""SELECT w.id, w.room_id, w.customer_id, w.customer_name, w.created_at, w.minutes, w.use_package,
                                       COALESCE(w.shop, '') AS shop, r.name AS room_name, r.status AS room_status
                                FROM waitlist w LEFT JOIN rooms r ON r.id = w.room_id
                                ORDER BY w.created_at, w.id""").fetchall()
@@ -1289,15 +1380,54 @@ def add_to_waitlist(data: WaitlistAdd, request: Request):
             if data.shop not in SHOPS:
                 raise HTTPException(400, "Choose a salon")
             shop, where = data.shop, f"next free bed at {data.shop}"
+        use_pkg = None
         if data.customer_id:
             dup = conn.execute("SELECT 1 FROM waitlist WHERE customer_id = ? AND room_id IS ? AND COALESCE(shop, ?) = ?",
                                (data.customer_id, data.room_id, shop, shop)).fetchone()
             if dup:
                 raise HTTPException(400, f"{name} is already on that waiting list")
-        conn.execute("INSERT INTO waitlist (room_id, customer_id, customer_name, shop) VALUES (?, ?, ?, ?)",
-                     (data.room_id, data.customer_id, name, shop))
-    audit(request, "waitlist_added", f"{name} - {where}")
-    return {"message": f"{name} added to the waiting list ({where})"}
+            if not data.minutes or data.minutes < 1 or data.minutes > 30:
+                raise HTTPException(400, "Enter the minutes for their session (1-30)")
+            expire_due(conn, data.customer_id)
+            cust = conn.execute("SELECT remaining_minutes FROM customers WHERE id = ?", (data.customer_id,)).fetchone()
+            if not cust:
+                raise HTTPException(404, "Customer not found")
+            pkg = package_status(conn, data.customer_id)
+            use_pkg = data.use_package if data.use_package is not None else (pkg["package_active"] and pkg["package_left_today"] > 0)
+            if use_pkg:
+                if not pkg["package_active"]:
+                    raise HTTPException(400, f"{name} doesn't have an unlimited package running")
+                if data.minutes > pkg["package_left_today"]:
+                    raise HTTPException(400, f"Unlimited package: {name} has {pkg['package_left_today']} min left today")
+            elif (cust["remaining_minutes"] or 0) < data.minutes:
+                raise HTTPException(400, f"Not enough minutes - {name} has {cust['remaining_minutes'] or 0}")
+        conn.execute("INSERT INTO waitlist (room_id, customer_id, customer_name, shop, minutes, use_package) VALUES (?, ?, ?, ?, ?, ?)",
+                     (data.room_id, data.customer_id, name, shop, data.minutes if data.customer_id else None, 1 if use_pkg else 0))
+    extra = f", {data.minutes} min" if data.customer_id else ""
+    audit(request, "waitlist_added", f"{name} - {where}{extra}")
+    return {"message": f"{name} added to the waiting list ({where}{extra})"}
+
+
+@app.post("/api/waitlist/{wait_id}/start")
+def start_from_waitlist(wait_id: int, data: WaitlistStart, request: Request):
+    """One press: start the waiting customer's session with the minutes chosen when they joined the list."""
+    with db() as conn:
+        c = conn.cursor()
+        w = c.execute("SELECT * FROM waitlist WHERE id = ?", (wait_id,)).fetchone()
+        if not w:
+            raise HTTPException(404, "They're no longer on the waiting list")
+        if not w["customer_id"] or not w["minutes"]:
+            raise HTTPException(400, "Open the customer to start their session")
+        room_id = w["room_id"] or data.room_id
+        if not room_id:
+            free = c.execute("SELECT id, name FROM rooms WHERE status = 'available' ORDER BY id").fetchall()
+            free = [r for r in free if shop_from_room(r["name"]) == w["shop"]]
+            if not free:
+                raise HTTPException(400, f"No free bed at {w['shop']} yet")
+            room_id = free[0]["id"]
+        customer, room, paid = start_session(c, w["customer_id"], room_id, w["minutes"], bool(w["use_package"]))
+    audit(request, "bed_assigned", f"{room['name']} ← {customer['name']} ({w['minutes']} min, {paid}, from waiting list)")
+    return {"message": f"{customer['name']} started on {room['name']} - {w['minutes']} min", "room_id": room_id}
 
 
 @app.delete("/api/waitlist/{wait_id}")
@@ -1420,9 +1550,12 @@ BACKUP_SHEETS = [
     ("Minutes", """SELECT b.id, c.customer_number, c.name, b.minutes_added, b.minutes_left, b.expired_minutes,
                           b.bought_on, b.expires_on, b.source, b.order_id, b.expired_at
                    FROM minute_batches b LEFT JOIN customers c ON c.id = b.customer_id ORDER BY b.id"""),
-    ("Sales", """SELECT o.id, o.created_at, c.customer_number, c.name, o.items, o.total, o.discount, o.payment_method, o.shop, o.staff
+    ("Sales", """SELECT o.id, o.created_at, c.customer_number, c.name, o.items, o.total, o.discount, o.payment_method, o.shop, o.staff,
+                        o.expires_on
                  FROM orders o LEFT JOIN customers c ON c.id = o.customer_id ORDER BY o.id"""),
-    ("Sessions", "SELECT id, created_at, customer_name, customer_id, room_name, shop, minutes FROM sessions ORDER BY id"),
+    ("Sessions", "SELECT id, created_at, customer_name, customer_id, room_name, shop, minutes, paid_with FROM sessions ORDER BY id"),
+    ("Package use", """SELECT u.used_on, c.customer_number, c.name, u.minutes, u.room_name, u.created_at
+                       FROM package_uses u LEFT JOIN customers c ON c.id = u.customer_id ORDER BY u.id"""),
     ("Waiting list", "SELECT id, created_at, customer_name, customer_id, room_id, shop FROM waitlist ORDER BY id"),
     ("Products", "SELECT code, name, price, category, minutes, active, note FROM products ORDER BY sort"),
     ("Staff", "SELECT username, display_name, role, active, created_at, last_login_at FROM staff_users ORDER BY id"),
@@ -1856,6 +1989,7 @@ def customer_me(request: Request):
             raise HTTPException(401, "Please log in")
         d = dict(row)
         d["next_expiry_minutes"], d["next_expiry_on"] = next_expiry(conn, cid)
+        d.update(package_status(conn, cid))
     return d
 
 
@@ -1865,8 +1999,8 @@ def customer_my_history(request: Request):
     if not cid:
         raise HTTPException(401, "Please log in")
     with db() as conn:
-        rows = conn.execute("SELECT items, total, created_at FROM orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT 20", (cid,)).fetchall()
-    return [dict(r) for r in rows]
+        rows = purchase_history(conn, cid, 20)
+    return [{k: r[k] for k in ("items", "total", "created_at", "expires_on")} for r in rows]
 
 
 @app.get("/unsubscribe")

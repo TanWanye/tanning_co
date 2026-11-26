@@ -67,24 +67,31 @@ recommended for that skin type.
 ## Courses, special offers and the waiting list
 
 * **Add courses to account** (customer profile) lists special offers first, then single sessions,
-  minute packs and unlimited packages. Everything is added to the customer's balance as minutes.
+  minute packs and unlimited packages. Packs and offers are added to the customer's balance as minutes.
 * **Special offers**: managers switch each offer on or off under **More → Special offers**
   (or "Manage offers" in the Add courses list). Hidden offers can't be sold. The setting is kept
   when the app restarts. Offer prices and wording are in `PRICE_LIST` at the top of `backend/main.py`.
   * Special Offer: 120 mins for £45
   * Special Offer: 60 mins for £25
   * Special Offer: 120 mins + FREE bottle of cream (worth £19.95) for £61. Staff get a reminder to hand over the cream.
+* **Unlimited weekly / monthly packages** add **no minutes**. The customer can use up to **15 minutes a day**
+  (one or more sessions) until the package ends: 7 days, or one calendar month, from the date bought.
+  Buying another package while one is running adds the time on after it. The profile shows the package,
+  its end date and the minutes left today. If a customer has a package and minutes, staff choose
+  "Pay with" when starting a session.
 * **Waiting list**: when starting a session, beds in use show "+ Waiting list". If every bed is busy,
-  there's a "next free bed" option. A customer can also be added from their profile. Everyone waiting
-  shows in the Waiting list panel, which turns green when their bed (or any bed) is free. Starting
-  their session removes them from the list.
+  there's a "next free bed" option. A customer can also be added from their profile. The minutes (and
+  package or minutes) are chosen when they join the list. When their bed is free the bed shows
+  **Start {name}** – one press starts the timer and takes the minutes. Starting removes them from the list.
+* **No cleaning step**: when a session is finished the bed is free straight away.
 
 ## Minutes expire after 12 months
 
 * Every purchase is stored as its own lot of minutes with an expiry date: **12 months** after it was bought.
-  Unlimited weekly/monthly packages expire with the package (7 / 30 days).
+  Unlimited weekly/monthly packages have no minutes; they end 7 days / 1 month after purchase.
 * Minutes are used **soonest-expiring first**. The customer profile shows "Next to expire" and a
-  "Minutes by expiry date" table. Customers see their next expiry date on the `/customer` page.
+  "Minutes by expiry date" table. Every purchase in the profile (and on the customer's `/customer` page)
+  shows its expiry date, or "Package ends" date, including any carried-over balance.
 * Expired minutes are removed automatically (checked hourly and whenever a customer is opened) and
   logged in the Activity log.
 * **Upgrading:** balances that existed before this version are carried over and expire 12 months from
